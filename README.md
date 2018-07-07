@@ -20,5 +20,11 @@ MiniGUI live demo server acts as a Websocket server.
    transfers the input events from the client via Websocket, and transfers
    the events to MiniGUI via UNIX socket.
 
+Note that this server is based on the work of allinurl at:
+
+    https://github.com/allinurl/gwsocket
+
+The sofware gwsocket is licensed under MIT.
+
 ## Usage
 
