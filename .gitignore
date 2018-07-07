@@ -50,3 +50,23 @@ modules.order
 Module.symvers
 Mkfile.old
 dkms.conf
+
+# Auto-generated files by autoconf/automake
+Makefile
+Makefile.in
+.deps/
+.libs/
+/acinclude.m4
+/aclocal.m4
+/autom4te.cache
+/compile
+/missing
+/stamp-h1
+/config.*
+/configure
+/depcomp
+/install-sh
+/libtool
+/*.pc
+/*config.h
+/*config.h.in

@@ -1,6 +1,6 @@
-# MiniGUI Live Demo Server
+# MiniGUI Remote Server
 
-MiniGUI live demo server acts as a Websocket server.
+MiniGUI Remote server acts as a Websocket server.
 
 1. It listens on the port 7777 by default to wait for the connection request
    from a client (a web page).
@@ -24,7 +24,7 @@ Note that this server is based on the work of allinurl at:
 
     https://github.com/allinurl/gwsocket
 
-The sofware gwsocket is licensed under MIT.
+The sofware `gwsocket` is licensed under MIT.
 
 ## Usage
 

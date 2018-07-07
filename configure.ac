@@ -62,8 +62,12 @@ fi
 
 # Build with OpenSSL
 if test "$openssl" = 'yes'; then
-    AC_CHECK_LIB([ssl], [SSL_library_init],,[AC_MSG_ERROR([ssl library missing])])
-    AC_CHECK_LIB([crypto], [CRYPTO_num_locks],,[AC_MSG_ERROR([crypto library missing])])
+    AC_CHECK_LIB([ssl], [SSL_library_init],
+        DEP_LIBS="$DEP_LIBS -lssl",
+        [AC_MSG_ERROR([ssl library missing])])
+    AC_CHECK_LIB([crypto], [CRYPTO_num_locks],
+        DEP_LIBS="$DEP_LIBS -lcrypto",
+        [AC_MSG_ERROR([crypto library missing])])
 fi
 
 if test "$ac_cv_prog_gcc" = "yes"; then
@@ -72,6 +76,8 @@ fi
 
 dnl ========================================================================
 dnl Write Output
+
+AC_SUBST(DEP_LIBS)
 
 AC_OUTPUT(
 Makefile

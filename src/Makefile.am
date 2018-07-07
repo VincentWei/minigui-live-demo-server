@@ -1,18 +1,19 @@
 bin_PROGRAMS = mgremoteserver
 
 mgremoteserver_SOURCES = \
-  gbase64.c     \
-  gbase64.h     \
-  ggslist.c     \
-  ggslist.h     \
-  ggwsocket.c   \
-  ggwsocket.h   \
-  glog.c        \
-  glog.h        \
-  gsha1.c       \
-  gsha1.h       \
-  gwebsocket.c  \
-  gwebsocket.h  \
-  gxmalloc.c    \
-  gxmalloc.h
+  base64.c     \
+  base64.h     \
+  gslist.c     \
+  gslist.h     \
+  gwsocket.c   \
+  gwsocket.h   \
+  log.c        \
+  log.h        \
+  sha1.c       \
+  sha1.h       \
+  websocket.c  \
+  websocket.h  \
+  xmalloc.c    \
+  xmalloc.h
 
+mgremoteserver_LDADD = @DEP_LIBS@
