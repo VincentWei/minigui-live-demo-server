@@ -35,6 +35,8 @@
 
 #define US_PATH     "/var/tmp/mg-remote-server"
 
+#define TABLESIZE(table)    (sizeof(table)/sizeof(table[0]))
+
 typedef struct _RECT
 {
     int left;

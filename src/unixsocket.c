@@ -134,8 +134,6 @@ int us_accept (int listenfd, pid_t *pidptr, uid_t *uidptr)
     return (clifd);
 }
 
-#define TABLESIZE(table)    (sizeof(table)/sizeof(table[0]))
-
 static struct _demo_info {
     char* const demo_name;
     char* const exe_file;
