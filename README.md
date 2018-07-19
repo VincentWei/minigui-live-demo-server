@@ -3,13 +3,13 @@
 MiniGUI Remote Server acts as a Websocket server and a UNIX domain socket server at
 the same time.
 
-1. It listens on the port 7777 for websocket connections and /var/tmp/mg-remote-sever
+1. It listens on the port 7777 for WebSocket connections and /var/tmp/mg-remote-sever
    for UNIX domain socket connections.
 
-1. A websocket client connects to the server, tells the server the demo it want to run.
+1. A WebSocket client connects to the server, tells the server the demo it want to run.
    It will also tell the server the resolution (width and height in pixels) to show the demo.
 
-2. The server forks and executes the MiniGUI program specified by the websocket client
+2. The server forks and executes the MiniGUI program specified by the WebSocket client
    in the child. Before this, the server should set the following environment variables
    for the MiniGUI client.
 
@@ -33,13 +33,13 @@ the same time.
 
 7. The MiniGUI client sends the dirty rectangle information via the
    UNIX socket, and the server then sends the information and the pixel data
-   to the websocket client. For the performance reason, the server creates
+   to the WebSocket client. For the performance reason, the server creates
    a shadow frame buffer and copy the pixel data from the virtual frame buffer
    and send an ACK message to MiniGUI client immediately when it gets the dirty
    rectangle message. The server then sends the pixel data from the shadow 
-   frame buffer to the websocket client.
+   frame buffer to the WebSocket client.
 
-8. The server gets the input events from the websocket client and sends them
+8. The server gets the input events from the WebSocket client and sends them
    to the MiniGUI client via the UNIX socket.
 
 Note that this server is based on the work of allinurl at:

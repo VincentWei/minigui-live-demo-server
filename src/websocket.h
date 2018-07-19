@@ -251,7 +251,7 @@ typedef struct WSClient_
 #endif
 } WSClient;
 
-/* Config OOptions */
+/* Pipe In */
 typedef struct WSPipeIn_
 {
   int fd;                       /* named pipe FD */

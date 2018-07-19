@@ -1,9 +1,28 @@
 /*
 ** unixsocket.c: Utilities for UNIX socket server.
 **
-** Wei Yongming.
+** Copyright (c) 2018 FMSoft (http://www.fmsoft.cn)
+** Author: Vincent Wei (https://github.com/VincentWei)
 **
-** NOTE: The idea comes from sample code in APUE.
+** The MIT License (MIT)
+**
+** Permission is hereby granted, free of charge, to any person obtaining a copy
+** of this software and associated documentation files (the "Software"), to deal
+** in the Software without restriction, including without limitation the rights
+** to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+** copies of the Software, and to permit persons to whom the Software is
+** furnished to do so, subject to the following conditions:
+**
+** The above copyright notice and this permission notice shall be included in all
+** copies or substantial portions of the Software.
+**
+** THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+** IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+** FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+** AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+** LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+** OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+** SOFTWARE.
 */
 
 #include <stdio.h>
@@ -168,52 +187,19 @@ pid_t us_start_client (const char* demo_name, const char* video_mode)
     return pid;
 }
 
-/* The pixel format */
-#define COMMLCD_TRUE_RGB565      3
-#define COMMLCD_TRUE_RGB8888     4
-
-struct _commlcd_info {
-    short height, width;  // Size of the screen
-    short bpp;            // Depth (bits-per-pixel)
-    short type;           // Pixel type
-    short rlen;           // Length of one scan line in bytes
-    void  *fb;            // Frame buffer
-};
-
-#define FT_MODE         1
-    #define MAX_MODE        15
-#define FT_VFBINFO      2
-#define FT_SHMID        3
-#define FT_SEMID        4
-
-#define FT_PING         11
-#define FT_PONG         12
-
-#define FT_EVENT        13
-
-#define FT_DIRTY        14
-#define FT_ACK          15
-
-struct _frame_header {
-    int type;
-    size_t payload_len;
-    unsigned char payload[0];
-};
-
-int us_on_connected (int fd, const char* video_mode)
+int us_on_connected (USClient* us_client, const char* video_mode)
 {
     ssize_t n = 0;
     int retval;
     struct _frame_header header;
-    struct _commlcd_info lcd_info;
-    uint8_t* shadow_fb = NULL;
-    uint8_t* virtual_fb = (uint8_t*) -1;
-    int shm_id, sem_id;
+
+    us_client->shadow_fb = NULL;
+    us_client->virtual_fb = (uint8_t*) -1;
 
     header.type = FT_MODE;
     header.payload_len = strlen (video_mode);
-    n += write (fd, &header, sizeof (struct _frame_header));
-    n += write (fd, video_mode, header.payload_len);
+    n += write (us_client->fd, &header, sizeof (struct _frame_header));
+    n += write (us_client->fd, video_mode, header.payload_len);
 
     if (n != sizeof (struct _frame_header) + header.payload_len) {
         retval = 1;
@@ -221,50 +207,50 @@ int us_on_connected (int fd, const char* video_mode)
     }
 
     /* read info of virtual fram buffer */
-    n = read (fd, &header, sizeof (struct _frame_header));
+    n = read (us_client->fd, &header, sizeof (struct _frame_header));
     if (n < sizeof (struct _frame_header) || header.type != FT_VFBINFO) {
         retval = 2;
         goto error;
     }
-    n = read (fd, &lcd_info, sizeof (struct _commlcd_info));
+    n = read (us_client->fd, &us_client->vfb_info, sizeof (struct _vfb_info));
     if (n < header.payload_len) {
         retval = 3;
         goto error;
     }
 
     /* create shadow frame buffer */
-    shadow_fb = malloc (lcd_info.rlen * lcd_info.height);
-    if (shadow_fb == NULL) {
+    us_client->shadow_fb = malloc (us_client->vfb_info.rlen * us_client->vfb_info.height);
+    if (us_client->shadow_fb == NULL) {
         retval = 4;
         goto error;
     }
 
     /* read id of shared virtual fram buffer */
-    n = read (fd, &header, sizeof (struct _frame_header));
+    n = read (us_client->fd, &header, sizeof (struct _frame_header));
     if (n < sizeof (struct _frame_header) || header.type != FT_SHMID) {
         retval = 5;
         goto error;
     }
-    n = read (fd, &shm_id, sizeof (int));
+    n = read (us_client->fd, &us_client->shm_id, sizeof (int));
     if (n < header.payload_len) {
         retval = 6;
         goto error;
     }
 
     /* attach to the shared virtual fram buffer */
-    virtual_fb = (uint8_t*)shmat (shm_id, 0, 0); 
-    if (virtual_fb == (uint8_t*)-1) {
+    us_client->virtual_fb = (uint8_t*)shmat (us_client->shm_id, 0, 0); 
+    if (us_client->virtual_fb == (uint8_t*)-1) {
         retval = 7;
         goto error;
     }
 
     /* read id of the semphamore */
-    n = read (fd, &header, sizeof (struct _frame_header));
+    n = read (us_client->fd, &header, sizeof (struct _frame_header));
     if (n < sizeof (struct _frame_header) || header.type != FT_SEMID) {
         retval = 8;
         goto error;
     }
-    n = read (fd, &sem_id, sizeof (int));
+    n = read (us_client->fd, &us_client->sem_id, sizeof (int));
     if (n < header.payload_len) {
         retval = 9;
         goto error;
@@ -275,16 +261,110 @@ int us_on_connected (int fd, const char* video_mode)
 error:
     LOG (("us_on_connected: failed (%d)\n", retval));
 
-    if (shadow_fb) {
-        free (shadow_fb);
+    if (us_client->shadow_fb) {
+        free (us_client->shadow_fb);
     }
 
-    if (virtual_fb != (uint8_t*)-1) {
-        shmdt (virtual_fb);
+    if (us_client->virtual_fb != (uint8_t*)-1) {
+        shmdt (us_client->virtual_fb);
     }
-
-    close (fd);
 
     return retval;
+}
+
+/* return zero on success; none-zero on error */
+int us_ping_client (const USClient* us_client)
+{
+    ssize_t n = 0;
+    int retval;
+    struct _frame_header header;
+
+    header.type = FT_PING;
+    header.payload_len = 0;
+    n = write (us_client->fd, &header, sizeof (struct _frame_header));
+    if (n != sizeof (struct _frame_header)) {
+        return 1;
+    }
+
+    n = read (us_client->fd, &header, sizeof (struct _frame_header));
+    if (n < sizeof (struct _frame_header) || header.type != FT_PONG) {
+        return 2;
+    }
+
+    return 0;
+}
+
+/* return zero on success; none-zero on error */
+int us_on_client_data (USClient* us_client)
+{
+    ssize_t n = 0;
+    int retval;
+    struct _frame_header header;
+
+    n = read (us_client->fd, &header, sizeof (struct _frame_header));
+    if (n < sizeof (struct _frame_header)) {
+        return 1;
+    }
+
+    if (header.type == FT_DIRTY) {
+        int y, Bpp;
+        RECT rc_dirty;
+
+        n = read (us_client->fd, &rc_dirty, sizeof (RECT));
+        if (n < sizeof (RECT)) {
+            return 2;
+        }
+
+        if (us_client->vfb_info.type == COMMLCD_TRUE_RGB565)
+            Bpp = 2;
+        else if (us_client->vfb_info.type == COMMLCD_TRUE_RGB8888)
+            Bpp = 4;
+
+        /* copy pixel data to shadow frame buffer here */
+        uint8_t* src_pixel = us_client->virtual_fb + us_client->vfb_info.rlen * rc_dirty.top + rc_dirty.left * Bpp;
+        uint8_t* dst_pixel = us_client->shadow_fb + us_client->vfb_info.rlen * rc_dirty.top +  rc_dirty.left * Bpp;
+        int dirty_pixels = rc_dirty.right - rc_dirty.left;
+        for (y = rc_dirty.top; y < rc_dirty.bottom; y++) {
+            memcpy (dst_pixel, src_pixel, dirty_pixels * Bpp);
+            src_pixel += us_client->vfb_info.rlen;
+            dst_pixel += us_client->vfb_info.rlen;
+        }
+
+        /* merge the dirty rect to whole dirty rect */
+        us_client->rc_dirty.left = (us_client->rc_dirty.left < rc_dirty.left) ? us_client->rc_dirty.left : rc_dirty.left;
+        us_client->rc_dirty.top  = (us_client->rc_dirty.top < rc_dirty.top) ? us_client->rc_dirty.top : rc_dirty.top;
+        us_client->rc_dirty.right = (us_client->rc_dirty.right > rc_dirty.right) ? us_client->rc_dirty.right : rc_dirty.right;
+        us_client->rc_dirty.bottom = (us_client->rc_dirty.bottom > rc_dirty.bottom) ? us_client->rc_dirty.bottom : rc_dirty.bottom;
+
+        header.type = FT_ACK;
+        header.payload_len = 0;
+        n = write (us_client->fd, &header, sizeof (struct _frame_header));
+        if (n < sizeof (struct _frame_header)) {
+            return 2;
+        }
+    }
+    else {
+        LOG (("us_on_client_data: unknown data type: %d\n", header.type));
+    }
+
+    return 0;
+}
+
+int us_client_cleanup (USClient* us_client)
+{
+    if (us_client->shadow_fb) {
+        free (us_client->shadow_fb);
+        us_client->shadow_fb = NULL;
+    }
+
+    if (us_client->virtual_fb != (uint8_t*)-1) {
+        shmdt (us_client->virtual_fb);
+        us_client->virtual_fb = (uint8_t*)-1;
+    }
+
+    close (us_client->fd);
+    us_client->fd = -1;
+
+    return 0;
 }
 
