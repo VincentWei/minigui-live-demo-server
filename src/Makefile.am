@@ -11,9 +11,11 @@ mgremoteserver_SOURCES = \
   log.h        \
   sha1.c       \
   sha1.h       \
+  xmalloc.c    \
+  xmalloc.h    \
   websocket.c  \
   websocket.h  \
-  xmalloc.c    \
-  xmalloc.h
+  unixsocket.c \
+  unixsocket.h
 
 mgremoteserver_LDADD = @DEP_LIBS@
