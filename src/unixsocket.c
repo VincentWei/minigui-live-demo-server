@@ -50,10 +50,10 @@ int us_listen (const char *name)
     struct sockaddr_un unix_addr;
 
     /* create a Unix domain stream socket */
-    if ( (fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
+    if ((fd = socket (AF_UNIX, SOCK_STREAM, 0)) < 0)
         return (-1);
 
-    fcntl( fd, F_SETFD, FD_CLOEXEC );
+    fcntl (fd, F_SETFD, FD_CLOEXEC);
 
     /* in case it already exists */
     unlink (name);
@@ -190,6 +190,7 @@ int us_on_connected (USClient* us_client, const char* video_mode)
     ssize_t n = 0;
     int retval;
     struct _frame_header header;
+    int bytes_per_pixel;
 
     us_client->shadow_fb = NULL;
     us_client->virtual_fb = (uint8_t*) -1;
@@ -216,41 +217,55 @@ int us_on_connected (USClient* us_client, const char* video_mode)
         goto error;
     }
 
+    if (us_client->vfb_info.type == COMMLCD_TRUE_RGB565) {
+        us_client->bytes_per_pixel = 3;
+        us_client->row_pitch = us_client->vfb_info.width * 3;
+    }
+    else if (us_client->vfb_info.type == COMMLCD_TRUE_RGB8888) {
+        us_client->bytes_per_pixel = 3;
+        us_client->row_pitch = us_client->vfb_info.width * 3;
+    }
+    else {
+        /* not support pixel type */
+        retval = 4;
+        goto error;
+    }
+
     /* create shadow frame buffer */
     us_client->shadow_fb = malloc (us_client->vfb_info.rlen * us_client->vfb_info.height);
     if (us_client->shadow_fb == NULL) {
-        retval = 4;
+        retval = 5;
         goto error;
     }
 
     /* read id of shared virtual fram buffer */
     n = read (us_client->fd, &header, sizeof (struct _frame_header));
     if (n < sizeof (struct _frame_header) || header.type != FT_SHMID) {
-        retval = 5;
+        retval = 6;
         goto error;
     }
     n = read (us_client->fd, &us_client->shm_id, sizeof (int));
     if (n < header.payload_len) {
-        retval = 6;
+        retval = 7;
         goto error;
     }
 
     /* attach to the shared virtual fram buffer */
     us_client->virtual_fb = (uint8_t*)shmat (us_client->shm_id, 0, 0); 
     if (us_client->virtual_fb == (uint8_t*)-1) {
-        retval = 7;
+        retval = 8;
         goto error;
     }
 
     /* read id of the semphamore */
     n = read (us_client->fd, &header, sizeof (struct _frame_header));
     if (n < sizeof (struct _frame_header) || header.type != FT_SEMID) {
-        retval = 8;
+        retval = 9;
         goto error;
     }
     n = read (us_client->fd, &us_client->sem_id, sizeof (int));
     if (n < header.payload_len) {
-        retval = 9;
+        retval = 10;
         goto error;
     }
 
@@ -305,7 +320,7 @@ int us_on_client_data (USClient* us_client)
     }
 
     if (header.type == FT_DIRTY) {
-        int y, Bpp;
+        int y, bytes_per_pixel;
         RECT rc_dirty;
 
         n = read (us_client->fd, &rc_dirty, sizeof (RECT));
@@ -314,18 +329,28 @@ int us_on_client_data (USClient* us_client)
         }
 
         if (us_client->vfb_info.type == COMMLCD_TRUE_RGB565)
-            Bpp = 2;
+            bytes_per_pixel = 2;
         else if (us_client->vfb_info.type == COMMLCD_TRUE_RGB8888)
-            Bpp = 4;
+            bytes_per_pixel = 4;
 
         /* copy pixel data to shadow frame buffer here */
-        uint8_t* src_pixel = us_client->virtual_fb + us_client->vfb_info.rlen * rc_dirty.top + rc_dirty.left * Bpp;
-        uint8_t* dst_pixel = us_client->shadow_fb + us_client->vfb_info.rlen * rc_dirty.top +  rc_dirty.left * Bpp;
+        uint8_t* src_pixel = us_client->virtual_fb + us_client->vfb_info.rlen * rc_dirty.top + rc_dirty.left * bytes_per_pixel;
+        uint8_t* dst_pixel = us_client->shadow_fb + us_client->row_pitch * rc_dirty.top +  rc_dirty.left * us_client->bytes_per_pixel;
         int dirty_pixels = rc_dirty.right - rc_dirty.left;
         for (y = rc_dirty.top; y < rc_dirty.bottom; y++) {
-            memcpy (dst_pixel, src_pixel, dirty_pixels * Bpp);
+            if (bytes_per_pixel == 4) {
+                memcpy (dst_pixel, src_pixel, dirty_pixels * bytes_per_pixel);
+            }
+            else {
+                for (int x = 0; x < dirty_pixels; x++) {
+                    uint16_t pixel = *((uint16_t*)src_pixel);
+                    dst_pixel [x*3 + 0] = (((pixel&0xF800)>>11)<<3);
+                    dst_pixel [x*3 + 1] = (((pixel&0x07E0)>>5)<<2);
+                    dst_pixel [x*3 + 2] = ((pixel&0x001F)<<3);
+                }
+            }
             src_pixel += us_client->vfb_info.rlen;
-            dst_pixel += us_client->vfb_info.rlen;
+            dst_pixel += us_client->row_pitch;
         }
 
         /* merge the dirty rect to whole dirty rect */

@@ -80,16 +80,19 @@ struct _vfb_info {
 /* A UnixSocket Client */
 typedef struct USClient_
 {
-    int fd;                       /* UNIX socket FD */
-    pid_t pid;                    /* client PID */
+    int fd;                         /* UNIX socket FD */
+    pid_t pid;                      /* client PID */
 
-    int shm_id, sem_id;           /* identifies for SysV IPC objects */
+    int shm_id, sem_id;             /* identifies for SysV IPC objects */
 
-    struct _vfb_info vfb_info;    /* info or virtual frame buffer */
-    uint8_t* virtual_fb;          /* the virtual frame buffer */
-    uint8_t* shadow_fb;           /* the shadow frame buffer */
+    struct _vfb_info vfb_info;      /* info or virtual frame buffer */
+    uint8_t* virtual_fb;            /* the virtual frame buffer */
 
-    RECT rc_dirty;                /* the dirty rectangle which is not sent to WSClient */
+    int bytes_per_pixel;            /* the bytes_per_pixel of the shadow FB */
+    int row_pitch;                  /* the row pitch of the shadow FB */
+    uint8_t* shadow_fb;             /* the shadow frame buffer */
+
+    RECT rc_dirty;                  /* the dirty rectangle which is not sent to WSClient */
 } USClient;
 
 int us_listen (const char* name);

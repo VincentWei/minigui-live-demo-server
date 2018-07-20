@@ -60,6 +60,8 @@ if test "x$devel_mode" = "xyes"; then
     fi
 fi
 
+AC_CHECK_LIB([png], [png_check_sig], DEP_LIBS="$DEP_LIBS -lpng", [AC_MSG_ERROR([png library missing])])
+
 # Build with OpenSSL
 if test "$openssl" = 'yes'; then
     AC_CHECK_LIB([ssl], [SSL_library_init],

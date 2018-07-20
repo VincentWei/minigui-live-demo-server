@@ -16,6 +16,8 @@ mgremoteserver_SOURCES = \
   websocket.c  \
   websocket.h  \
   unixsocket.c \
-  unixsocket.h
+  unixsocket.h \
+  pixelencoder.c \
+  pixelencoder.h
 
 mgremoteserver_LDADD = @DEP_LIBS@
