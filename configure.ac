@@ -50,8 +50,13 @@ devel_mode=$enableval)
 
 openssl="no"
 AC_ARG_WITH(openssl,
-[   --enable-openssl,       build with OpenSSL support],
+[   --enable-openssl,       build with OpenSSL support <default=no>],
 openssl="$withval")
+
+unixsocket="yes"
+AC_ARG_WITH(unixsocket,
+[   --enable-unixsocket,    use UNIX socket instead of FIFO <default=yes>],
+unixsocket="$withval")
 
 if test "x$devel_mode" = "xyes"; then
     CPPFLAGS="$CPPFLAGS -DDEBUG -D_DEBUG"
@@ -70,6 +75,11 @@ if test "$openssl" = 'yes'; then
     AC_CHECK_LIB([crypto], [CRYPTO_num_locks],
         DEP_LIBS="$DEP_LIBS -lcrypto",
         [AC_MSG_ERROR([crypto library missing])])
+fi
+
+# Use UNIX socket 
+if test "$unixsocket" = 'yes'; then
+    CPPFLAGS="$CPPFLAGS -DUNIXSOCKET"
 fi
 
 if test "$ac_cv_prog_gcc" = "yes"; then

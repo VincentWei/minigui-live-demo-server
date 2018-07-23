@@ -115,8 +115,12 @@ handle_signal_action (int sig_number)
   if (sig_number == SIGINT) {
     printf ("SIGINT caught!\n");
     /* if it fails to write, force stop */
+#ifndef UNIXSOCKET
     if ((write (server->self_pipe[1], "x", 1)) == -1 && errno != EAGAIN)
       ws_stop (server);
+#else
+    ws_stop (server);
+#endif
   } else if (sig_number == SIGPIPE) {
     printf ("SIGPIPE caught!\n");
   }
@@ -138,6 +142,41 @@ setup_signals (void)
   }
   return 0;
 }
+
+#ifdef UNIXSOCKET
+static int
+onopen (WSClient * client)
+{
+  return 0;
+}
+
+static int
+onclose (WSClient * client)
+{
+  return 0;
+}
+
+static int
+onmessage (WSClient * client)
+{
+  WSMessage **msg = &client->message;
+  uint32_t hsize = sizeof (uint32_t) * 3;
+  char *hdr = NULL, *ptr = NULL;
+
+  hdr = calloc (hsize, sizeof (char));
+  ptr = hdr;
+  ptr += pack_uint32 (ptr, client->listener);
+  ptr += pack_uint32 (ptr, (*msg)->opcode);
+  ptr += pack_uint32 (ptr, (*msg)->payloadsz);
+
+  //ws_write_fifo (pipeout, hdr, hsize);
+  //ws_write_fifo (pipeout, (*msg)->payload, (*msg)->payloadsz);
+  free (hdr);
+
+  return 0;
+}
+
+#else
 
 static int
 onopen (WSPipeOut * pipeout, WSClient * client)
@@ -194,6 +233,8 @@ onmessage (WSPipeOut * pipeout, WSClient * client)
   return 0;
 }
 
+#endif
+
 static void
 parse_long_opt (const char *name, const char *oarg)
 {
@@ -203,10 +244,15 @@ parse_long_opt (const char *name, const char *oarg)
     ws_set_config_frame_size (atoi (oarg));
   if (!strcmp ("origin", name))
     ws_set_config_origin (oarg);
+#ifdef UNIXSOCKET
+  if (!strcmp ("unixsocket", name))
+    ws_set_config_unixsocket (oarg);
+#else
   if (!strcmp ("pipein", name))
     ws_set_config_pipein (oarg);
   if (!strcmp ("pipeout", name))
     ws_set_config_pipeout (oarg);
+#endif
   if (!strcmp ("strict", name))
     ws_set_config_strict (1);
   if (!strcmp ("access-log", name))
@@ -254,6 +300,7 @@ read_option_args (int argc, char **argv)
   return 0;
 }
 
+#ifndef UNIXSOCKET
 static void
 set_self_pipe (void)
 {
@@ -265,6 +312,7 @@ set_self_pipe (void)
   set_nonblocking (server->self_pipe[0]);
   set_nonblocking (server->self_pipe[1]);
 }
+#endif
 
 int
 main (int argc, char **argv)
@@ -278,9 +326,11 @@ main (int argc, char **argv)
   server->onmessage = onmessage;
   server->onopen = onopen;
 
+#ifndef UNIXSOCKET
   set_self_pipe ();
   if (setup_signals () != 0)
     exit (EXIT_FAILURE);
+#endif
 
   if (read_option_args (argc, argv) == 0)
     ws_start (server);

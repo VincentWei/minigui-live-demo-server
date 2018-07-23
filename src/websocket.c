@@ -51,6 +51,7 @@
 #endif
 
 #include "websocket.h"
+#include "unixsocket.h"
 
 #include "base64.h"
 #include "log.h"
@@ -223,6 +224,7 @@ new_wsmessage (void)
   return msg;
 }
 
+#ifndef UNIXSOCKET
 /* Allocate memory for a websocket pipeout */
 static WSPipeOut *
 new_wspipeout (void)
@@ -242,6 +244,7 @@ new_wspipein (void)
 
   return pipein;
 }
+#endif
 
 /* Escapes the special characters, e.g., '\n', '\r', '\t', '\'
  * in the string source by inserting a '\' before them.
@@ -525,6 +528,7 @@ ws_remove_dangling_clients (void *value, void *user_data)
   return 0;
 }
 
+#ifndef UNIXSOCKET
 /* Do some housekeeping on the named pipe data packet. */
 static void
 ws_clear_fifo_packet (WSPacket * packet)
@@ -571,15 +575,19 @@ ws_clear_pipeout (WSPipeOut * pipeout)
     unlink (wsconfig.pipeout);
 }
 
+#endif
+
 /* Stop the server and do some clearning. */
 void
 ws_stop (WSServer * server)
 {
+#ifndef UNIXSOCKET
   WSPipeIn **pipein = &server->pipein;
   WSPipeOut **pipeout = &server->pipeout;
 
   ws_clear_pipein (*pipein);
   ws_clear_pipeout (*pipeout);
+#endif
 
   /* close access log (if any) */
   if (wsconfig.accesslog)
@@ -1591,7 +1599,11 @@ ws_get_handshake (WSClient * client, WSServer * server)
 
   /* upon success, call onopen() callback */
   if (server->onopen && wsconfig.strict && !wsconfig.echomode)
+#ifdef UNIXSOCKET
+    server->onopen (client);
+#else
     server->onopen (server->pipeout, client);
+#endif
   client->headers->reading = 0;
 
   /* do access logging */
@@ -1848,9 +1860,17 @@ ws_handle_text_bin (WSClient * client, WSServer * server)
       ws_send_data (client, (*msg)->opcode, (*msg)->payload, (*msg)->payloadsz);
     /* just pipe out the message */
     else if (!wsconfig.strict)
+#ifdef UNIXSOCKET
+      ;
+#else
       ws_write_fifo (server->pipeout, (*msg)->payload, (*msg)->payloadsz);
+#endif
     else
+#ifdef UNIXSOCKET
+      server->onmessage (client);
+#else
       server->onmessage (server->pipeout, client);
+#endif
   }
   ws_free_message (client);
 }
@@ -2131,7 +2151,11 @@ handle_tcp_close (int conn, WSClient * client, WSServer * server)
   shutdown (conn, SHUT_RDWR);
   /* upon close, call onclose() callback */
   if (server->onclose && wsconfig.strict && !wsconfig.echomode)
+#ifdef UNIXSOCKET
+    (*server->onclose) (client);
+#else
     (*server->onclose) (server->pipeout, client);
+#endif
 
   /* do access logging */
   gettimeofday (&client->end_proc, NULL);
@@ -2271,6 +2295,32 @@ ws_listen (int listener, int conn, WSServer * server)
     handle_writes (conn, server);
 }
 
+/* Pack the given value into a network byte order.
+ *
+ * On success, the number size of uint32_t is returned. */
+size_t
+pack_uint32 (void *buf, uint32_t val)
+{
+  uint32_t v32 = htonl (val);
+  memcpy (buf, &v32, sizeof (uint32_t));
+
+  return sizeof (uint32_t);
+}
+
+/* Unpack the given value into a host byte order.
+ *
+ * On success, the number size of uint32_t is returned. */
+size_t
+unpack_uint32 (const void *buf, uint32_t * val)
+{
+  uint32_t v32 = 0;
+  memcpy (&v32, buf, sizeof (uint32_t));
+  *val = ntohl (v32);
+
+  return sizeof (uint32_t);
+}
+
+#ifndef UNIXSOCKET
 /* Create named pipe (FIFO) with the given pipe name.
  *
  * On error, 1 is returned.
@@ -2558,31 +2608,6 @@ ws_read_fifo (int fd, char *buf, int *buflen, int pos, int need)
   return bytes;
 }
 
-/* Pack the given value into a network byte order.
- *
- * On success, the number size of uint32_t is returned. */
-size_t
-pack_uint32 (void *buf, uint32_t val)
-{
-  uint32_t v32 = htonl (val);
-  memcpy (buf, &v32, sizeof (uint32_t));
-
-  return sizeof (uint32_t);
-}
-
-/* Unpack the given value into a host byte order.
- *
- * On success, the number size of uint32_t is returned. */
-size_t
-unpack_uint32 (const void *buf, uint32_t * val)
-{
-  uint32_t v32 = 0;
-  memcpy (&v32, buf, sizeof (uint32_t));
-  *val = ntohl (v32);
-
-  return sizeof (uint32_t);
-}
-
 /* Ensure the fields coming from the named pipe are valid.
  *
  * On error, 1 is returned.
@@ -2717,6 +2742,7 @@ handle_fifo (WSServer * server)
   else
     handle_fixed_fifo (server);
 }
+#endif
 
 /* Creates an endpoint for communication and start listening for
  * connections on a socket */
@@ -2751,6 +2777,7 @@ ws_socket (int *listener)
     FATAL ("Unable to listen: %s.", strerror (errno));
 }
 
+#ifndef UNIXSOCKET
 /* Handle incoming messages through a pipe (let gwsocket be the
  * reader) and outgoing messages through the pipe (writer). */
 static void
@@ -2763,7 +2790,9 @@ ws_fifos (WSServer * server, WSPipeIn * pi, WSPipeOut * po)
   if (po->fd != -1 && FD_ISSET (po->fd, &fdstate.wfds))
     ws_write_fifo (po, NULL, 0);
 }
+#endif
 
+#ifndef UNIXSOCKET
 /* Check each client to determine if:
  * 1. We want to see if it has data for reading
  * 2. We want to write data to it.
@@ -2785,6 +2814,7 @@ set_rfds_wfds (int listener, WSServer * server, WSPipeIn * pi, WSPipeOut * po)
 
   /* self-pipe trick to stop the event loop */
   FD_SET (server->self_pipe[0], &fdstate.rfds);
+
   /* server socket, ready for accept() */
   FD_SET (listener, &fdstate.rfds);
 
@@ -2809,15 +2839,19 @@ set_rfds_wfds (int listener, WSServer * server, WSPipeIn * pi, WSPipeOut * po)
     }
   }
 }
+#endif
 
 /* Start the websocket server and start to monitor multiple file
  * descriptors until we have something to read or write. */
 void
 ws_start (WSServer * server)
 {
+#ifndef UNIXSOCKET
   WSPipeIn *pipein = server->pipein;
   WSPipeOut *pipeout = server->pipeout;
-  int listener = 0, conn = 0;
+#endif
+
+  int ws_listener = 0, us_listener = 0, conn = 0;
 
 #ifdef HAVE_LIBSSL
   if (wsconfig.sslcert && wsconfig.sslkey) {
@@ -2829,19 +2863,30 @@ ws_start (WSServer * server)
 #endif
 
   memset (&fdstate, 0, sizeof fdstate);
+#ifdef UNIXSOCKET
+  us_listener = us_listen (wsconfig.unixsocket);
+#else
   ws_fifo (server);
-  ws_socket (&listener);
+#endif
+
+  ws_socket (&ws_listener);
 
   while (1) {
+#ifndef UNIXSOCKET
     /* If the pipeout file descriptor was opened after the server socket
      * was opened, then it's possible the max file descriptor would be the
      * pipeout fd, in any case we check this here */
-    max_file_fd = MAX (listener, pipeout->fd);
+    max_file_fd = MAX (ws_listener, pipeout->fd);
+#else
+    max_file_fd = MAX (ws_listener, us_listener);
+#endif
     /* Clear out the fd sets for this iteration. */
     FD_ZERO (&fdstate.rfds);
     FD_ZERO (&fdstate.wfds);
 
-    set_rfds_wfds (listener, server, pipein, pipeout);
+#ifndef UNIXSOCKET
+    set_rfds_wfds (ws_listener, server, pipein, pipeout);
+#endif
     max_file_fd += 1;
 
     /* yep, wait patiently */
@@ -2854,6 +2899,8 @@ ws_start (WSServer * server)
         FATAL ("Unable to select: %s.", strerror (errno));
       }
     }
+#ifdef UNIXSOCKET
+#else
     /* handle self-pipe trick */
     if (FD_ISSET (server->self_pipe[0], &fdstate.rfds))
       break;
@@ -2861,11 +2908,13 @@ ws_start (WSServer * server)
     /* iterate over existing connections */
     for (conn = 0; conn < max_file_fd; ++conn) {
       if (conn != pipein->fd && conn != pipeout->fd) {
-        ws_listen (listener, conn, server);
+        ws_listen (ws_listener, conn, server);
       }
     }
+
     /* handle FIFOs */
     ws_fifos (server, pipein, pipeout);
+#endif
   }
 }
 
@@ -2884,6 +2933,16 @@ ws_set_config_frame_size (int max_frm_size)
   wsconfig.max_frm_size = max_frm_size;
 }
 
+#ifdef UNIXSOCKET
+/* Set specific name for the UNIX socket. */
+void
+ws_set_config_unixsocket (const char *unixsocket)
+{
+  wsconfig.unixsocket = unixsocket;
+}
+
+#else
+
 /* Set specific name for the reader named pipe. */
 void
 ws_set_config_pipein (const char *pipein)
@@ -2897,6 +2956,8 @@ ws_set_config_pipeout (const char *pipeout)
 {
   wsconfig.pipeout = pipeout;
 }
+
+#endif
 
 /* Set a path and a file for the access log. */
 void
@@ -2955,16 +3016,21 @@ WSServer *
 ws_init (const char *host, const char *port)
 {
   WSServer *server = new_wsserver ();
+#ifndef UNIXSOCKET
   server->pipein = new_wspipein ();
   server->pipeout = new_wspipeout ();
   memset (server->self_pipe, 0, sizeof (server->self_pipe));
+#endif
 
   wsconfig.accesslog = NULL;
   wsconfig.host = host;
   wsconfig.max_frm_size = WS_MAX_FRM_SZ;
   wsconfig.origin = NULL;
+#ifdef UNIXSOCKET
+#else
   wsconfig.pipein = NULL;
   wsconfig.pipeout = NULL;
+#endif
   wsconfig.sslcert = NULL;
   wsconfig.sslkey = NULL;
   wsconfig.port = port;
