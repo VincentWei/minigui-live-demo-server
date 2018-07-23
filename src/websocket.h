@@ -228,11 +228,13 @@ typedef struct WSEState_
   fd_set wfds;
 } WSEState;
 
+struct USClient_;
+
 /* A WebSocket Client */
 typedef struct WSClient_
 {
   /* socket data */
-  int listener;                 /* socket */
+  int listener;                 /* Websocket fd */
   char remote_ip[INET6_ADDRSTRLEN];     /* client IP */
 
   WSQueue *sockqueue;           /* sending buffer */
@@ -250,7 +252,10 @@ typedef struct WSClient_
   WSStatus sslstatus;           /* ssl connection status */
 #endif
 
-  void* user_data;              /* user data */
+#ifdef UNIXSOCKET
+  pid_t pid_buddy;             /* PID of local buddy */
+  struct USClient_* us_buddy;  /* UNIX socket */
+#endif
 } WSClient;
 
 #ifndef UNIXSOCKET

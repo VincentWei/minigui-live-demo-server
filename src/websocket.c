@@ -2792,7 +2792,247 @@ ws_fifos (WSServer * server, WSPipeIn * pi, WSPipeOut * po)
 }
 #endif
 
-#ifndef UNIXSOCKET
+#ifdef UNIXSOCKET
+
+/* Set each client to determine if:
+ * 1. We want to see if it has data for reading
+ * 2. We want to write data to it.
+ * If so, set the client's socket descriptor in the descriptor set. */
+static void
+set_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
+{
+  GSLList *client_node = server->colist;
+  WSClient *client = NULL;
+
+  /* WebSocket server socket, ready for accept() */
+  FD_SET (ws_listener, &fdstate.rfds);
+
+  /* UNIX server socket, ready for accept() */
+  FD_SET (us_listener, &fdstate.rfds);
+
+  while (client_node) {
+    int ws_fd, us_fd = 0;
+
+    client = (WSClient*)(client_node->data);
+    ws_fd = client->listener;
+
+    if (client->us_buddy) {
+      us_fd = client->us_buddy->fd;
+    }
+
+    /* As long as we are not closing a connection, we assume we always
+     * check a client for reading */
+    if (!server->closing) {
+      FD_SET (ws_fd, &fdstate.rfds);
+      if (ws_fd > max_file_fd)
+        max_file_fd = ws_fd;
+
+        if (us_fd > 0) {
+          FD_SET (us_fd, &fdstate.rfds);
+          if (us_fd > max_file_fd)
+            max_file_fd = us_fd;
+        }
+    }
+
+    /* Only if we have data to send the client */
+    if (client->status & WS_SENDING) {
+      FD_SET (ws_fd, &fdstate.wfds);
+      if (ws_fd > max_file_fd)
+        max_file_fd = ws_fd;
+    }
+
+    client_node = client_node->next;
+  }
+}
+
+/* Match a client given a pid and an item from the list.
+ *
+ * On match, 1 is returned, else 0. */
+static int
+ws_find_client_pid_in_list (void *data, void *needle)
+{
+  WSClient *client = data;
+
+  return client->pid_buddy == (*(pid_t *) needle);
+}
+
+/* Find a client given a UNIX socket client pid.
+ *
+ * On success, an instance of a WSClient is returned, else NULL. */
+static WSClient *
+ws_get_client_from_list_by_buddy (pid_t pid, GSLList ** colist)
+{
+  GSLList *match = NULL;
+
+  /* Find the client data for the socket in use */
+  if (!(match = list_find (*colist, ws_find_client_pid_in_list, &pid)))
+    return NULL;
+  return (WSClient *) match->data;
+}
+
+/* Handle a new UNIX socket connection. */
+static void
+handle_us_accept (int listener, WSServer * server)
+{
+  WSClient *client = NULL;
+  pid_t pid_buddy;
+  int newfd;
+
+  newfd = us_accept (listener, &pid_buddy, NULL);
+  if (newfd < 0) {
+    LOG (("handle_us_accept: failed to accept UNIX socket client: %d\n", newfd));
+    return;
+  }
+
+  client = ws_get_client_from_list_by_buddy (pid_buddy, &server->colist);
+  if (client == NULL) {
+    return;
+  }
+
+  LOG (("Accepted UNIX client: %d\n", pid_buddy));
+}
+
+/* Handle a UNIX read. */
+static void
+handle_us_reads (int conn, WSServer * server)
+{
+  WSClient *client = NULL;
+
+  if (!(client = ws_get_client_from_list (conn, &server->colist)))
+    return;
+
+#ifdef HAVE_LIBSSL
+  if (handle_ssl_pending_rw (conn, server, client) == 0)
+    return;
+#endif
+
+  /* *INDENT-OFF* */
+  client->start_proc = client->end_proc = (struct timeval) {0};
+  /* *INDENT-ON* */
+  gettimeofday (&client->start_proc, NULL);
+  read_client_data (client, server);
+  /* An error ocurred while reading data or connection closed */
+  if ((client->status & WS_CLOSE)) {
+    handle_read_close (conn, client, server);
+  }
+}
+
+/* Handle a UNIX write close connection. */
+static void
+handle_us_write_close (int conn, WSClient * client, WSServer * server)
+{
+  handle_tcp_close (conn, client, server);
+}
+
+/* Handle a UNIX write. */
+static void
+handle_us_writes (int conn, WSServer * server)
+{
+  WSClient *client = NULL;
+
+  if (!(client = ws_get_client_from_list (conn, &server->colist)))
+    return;
+
+  ws_respond (client, NULL, 0); /* buffered data */
+  /* done sending data */
+  if (client->sockqueue == NULL)
+    client->status &= ~WS_SENDING;
+
+  /* An error ocurred while sending data or while reading data but still
+   * waiting from the last send() from the server to the client.  e.g.,
+   * sending status code */
+  if ((client->status & WS_CLOSE) && !(client->status & WS_SENDING))
+    handle_us_write_close (conn, client, server);
+}
+
+/* Check and handle fds. */
+static void
+check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
+{
+  GSLList *client_node = server->colist;
+  WSClient *client = NULL;
+
+  /* handle new WebSocket connections */
+  if (FD_ISSET (ws_listener, &fdstate.rfds))
+    handle_accept (ws_listener, server);
+  /* handle new UNIX socket connections */
+  else if (FD_ISSET (us_listener, &fdstate.rfds))
+    handle_us_accept (us_listener, server);
+
+  while (client_node) {
+    int ws_fd, us_fd;
+
+    client = (WSClient*)(client_node->data);
+    ws_fd = client->listener;
+
+    /* handle reading data from a client */
+    if (FD_ISSET (ws_fd, &fdstate.rfds))
+      handle_reads (ws_fd, server);
+    /* handle sending data to a client */
+    else if (FD_ISSET (ws_fd, &fdstate.wfds))
+      handle_writes (ws_fd, server);
+
+    if (client->us_buddy) {
+      us_fd = client->us_buddy->fd;
+
+      /* handle reading data from a UNIX client */
+      if (FD_ISSET (us_fd, &fdstate.rfds))
+        handle_us_reads (us_fd, server);
+      /* handle sending data to a UNIX client */
+      else if (FD_ISSET (us_fd, &fdstate.wfds))
+        handle_us_writes (us_fd, server);
+    }
+
+    client_node = client_node->next;
+  }
+}
+
+/* Start the websocket server and start to monitor multiple file
+ * descriptors until we have something to read or write. */
+void
+ws_start (WSServer * server)
+{
+  int ws_listener = 0, us_listener = 0, conn = 0;
+
+#ifdef HAVE_LIBSSL
+  if (wsconfig.sslcert && wsconfig.sslkey) {
+    LOG (("==Using TLS/SSL==\n"));
+    wsconfig.use_ssl = 1;
+    if (initialize_ssl_ctx (server))
+      return;
+  }
+#endif
+
+  memset (&fdstate, 0, sizeof fdstate);
+  us_listener = us_listen (wsconfig.unixsocket);
+  ws_socket (&ws_listener);
+
+  while (1) {
+    max_file_fd = MAX (ws_listener, us_listener);
+
+    /* Clear out the fd sets for this iteration. */
+    FD_ZERO (&fdstate.rfds);
+    FD_ZERO (&fdstate.wfds);
+
+    set_rfds_wfds (ws_listener, us_listener, server);
+    max_file_fd += 1;
+
+    /* yep, wait patiently */
+    /* should it be using epoll/kqueue? will see... */
+    if (select (max_file_fd, &fdstate.rfds, &fdstate.wfds, NULL, NULL) == -1) {
+      switch (errno) {
+      case EINTR:
+        break;
+      default:
+        FATAL ("Unable to select: %s.", strerror (errno));
+      }
+    }
+
+  }
+}
+
+#else
+
 /* Check each client to determine if:
  * 1. We want to see if it has data for reading
  * 2. We want to write data to it.
@@ -2839,84 +3079,8 @@ set_rfds_wfds (int listener, WSServer * server, WSPipeIn * pi, WSPipeOut * po)
     }
   }
 }
+
 #endif
-
-/* Start the websocket server and start to monitor multiple file
- * descriptors until we have something to read or write. */
-void
-ws_start (WSServer * server)
-{
-#ifndef UNIXSOCKET
-  WSPipeIn *pipein = server->pipein;
-  WSPipeOut *pipeout = server->pipeout;
-#endif
-
-  int ws_listener = 0, us_listener = 0, conn = 0;
-
-#ifdef HAVE_LIBSSL
-  if (wsconfig.sslcert && wsconfig.sslkey) {
-    LOG (("==Using TLS/SSL==\n"));
-    wsconfig.use_ssl = 1;
-    if (initialize_ssl_ctx (server))
-      return;
-  }
-#endif
-
-  memset (&fdstate, 0, sizeof fdstate);
-#ifdef UNIXSOCKET
-  us_listener = us_listen (wsconfig.unixsocket);
-#else
-  ws_fifo (server);
-#endif
-
-  ws_socket (&ws_listener);
-
-  while (1) {
-#ifndef UNIXSOCKET
-    /* If the pipeout file descriptor was opened after the server socket
-     * was opened, then it's possible the max file descriptor would be the
-     * pipeout fd, in any case we check this here */
-    max_file_fd = MAX (ws_listener, pipeout->fd);
-#else
-    max_file_fd = MAX (ws_listener, us_listener);
-#endif
-    /* Clear out the fd sets for this iteration. */
-    FD_ZERO (&fdstate.rfds);
-    FD_ZERO (&fdstate.wfds);
-
-#ifndef UNIXSOCKET
-    set_rfds_wfds (ws_listener, server, pipein, pipeout);
-#endif
-    max_file_fd += 1;
-
-    /* yep, wait patiently */
-    /* should it be using epoll/kqueue? will see... */
-    if (select (max_file_fd, &fdstate.rfds, &fdstate.wfds, NULL, NULL) == -1) {
-      switch (errno) {
-      case EINTR:
-        break;
-      default:
-        FATAL ("Unable to select: %s.", strerror (errno));
-      }
-    }
-#ifdef UNIXSOCKET
-#else
-    /* handle self-pipe trick */
-    if (FD_ISSET (server->self_pipe[0], &fdstate.rfds))
-      break;
-
-    /* iterate over existing connections */
-    for (conn = 0; conn < max_file_fd; ++conn) {
-      if (conn != pipein->fd && conn != pipeout->fd) {
-        ws_listen (ws_listener, conn, server);
-      }
-    }
-
-    /* handle FIFOs */
-    ws_fifos (server, pipein, pipeout);
-#endif
-  }
-}
 
 /* Set the origin so the server can force connections to have the
  * given HTTP origin. */
