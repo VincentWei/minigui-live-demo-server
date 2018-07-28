@@ -10,6 +10,8 @@
 #include <sys/select.h>
 #include <arpa/inet.h>
 
+#include "unixsocketclient.h"
+
 static size_t pack_uint32 (void* buf, uint32_t val)
 {
     uint32_t v32 = htonl (val);
@@ -172,8 +174,6 @@ static int wait_request (int fd_read, int* listener)
 }
 
 int main (int argc, char* argv[]) {
-    const char *fifo_read = "/tmp/wspipeout.fifo";
-    const char *fifo_send = "/tmp/wspipein.fifo";
     int fd_send, fd_read, fd_h264;
 
     int started = 0;
@@ -196,16 +196,10 @@ int main (int argc, char* argv[]) {
         exit (0);
     }
 
-    fd_send = open (fifo_send, O_WRONLY);
+    fd_send = fd_read = cli_conn (USS_PATH, 'h');
     if (fd_send < 0) {
-        perror ("failed to open FIFO for sending data: ");
+        perror ("failed to open UNIX Socket for reading/sending data: ");
         exit (3);
-    }
-
-    fd_read = open (fifo_read, O_RDWR | O_NONBLOCK);
-    if (fd_read < 0) {
-        perror ("failed to open FIFO for reading data: ");
-        exit (4);
     }
 
     while (1) {

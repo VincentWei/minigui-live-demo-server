@@ -28,7 +28,7 @@ int cli_conn (const char *name, char project)
     /* fill socket address structure w/our address */
     memset(&unix_addr, 0, sizeof(unix_addr));
     unix_addr.sun_family = AF_UNIX;
-    sprintf(unix_addr.sun_path, "%s%05d-%c", CLI_PATH, getpid(), project);
+    sprintf(unix_addr.sun_path, "%s%05d-%c", USC_PATH, getpid(), project);
     len = /* th sizeof(unix_addr.sun_len) + */ sizeof(unix_addr.sun_family) +
           strlen(unix_addr.sun_path) /* th + 1 */;
     /* th unix_addr.sun_len = len; */
@@ -36,7 +36,7 @@ int cli_conn (const char *name, char project)
     unlink (unix_addr.sun_path);        /* in case it already exists */
     if (bind(fd, (struct sockaddr *) &unix_addr, len) < 0)
         goto error;
-    if (chmod(unix_addr.sun_path, CLI_PERM) < 0)
+    if (chmod(unix_addr.sun_path, USC_PERM) < 0)
         goto error;
 
     /* fill socket address structure w/server's addr */

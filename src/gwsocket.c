@@ -36,13 +36,17 @@
 #include <errno.h>
 #include <unistd.h>
 
+#if HAVE_CONFIG_H
+#include "config.h"
+#endif
+
 #include "gwsocket.h"
 #include "log.h"
-#include "websocket.h"
 #include "xmalloc.h"
+#include "websocket.h"
 
-#if HAVE_CONFIG_H
-#include <config.h>
+#ifdef UNIXSOCKET
+#include "unixsocket.h"
 #endif
 
 static WSServer *server = NULL;
@@ -247,6 +251,8 @@ parse_long_opt (const char *name, const char *oarg)
 #ifdef UNIXSOCKET
   if (!strcmp ("unixsocket", name))
     ws_set_config_unixsocket (oarg);
+  else
+    ws_set_config_unixsocket (USS_PATH);
 #else
   if (!strcmp ("pipein", name))
     ws_set_config_pipein (oarg);

@@ -11,6 +11,8 @@ dnl ========================================================================
 dnl Init automake
 AM_INIT_AUTOMAKE
 
+AC_CONFIG_HEADER(src/config.h)
+
 dnl ========================================================================
 dnl Checks for programs.
 AC_PROG_MAKE_SET
@@ -79,7 +81,8 @@ fi
 
 # Use UNIX socket 
 if test "$unixsocket" = 'yes'; then
-    CPPFLAGS="$CPPFLAGS -DUNIXSOCKET"
+    AC_DEFINE(UNIXSOCKET, 1,
+                [Define if use UNIX socket instead of named pipe.])
 fi
 
 if test "$ac_cv_prog_gcc" = "yes"; then
