@@ -95,4 +95,5 @@ AC_OUTPUT(
 Makefile
 m4/Makefile
 src/Makefile
+producer/Makefile
 )

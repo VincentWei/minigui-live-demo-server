@@ -1621,11 +1621,15 @@ ws_get_handshake (WSClient * client, WSServer * server)
 int
 ws_send_data (WSClient * client, WSOpcode opcode, const char *p, int sz)
 {
-  char *buf = NULL;
-
-  buf = sanitize_utf8 (p, sz);
-  ws_send_frame (client, opcode, buf, sz);
-  free (buf);
+  if (opcode == WS_OPCODE_BIN) {
+    ws_send_frame (client, opcode, p, sz);
+  }
+  else {
+    char *buf = NULL;
+    buf = sanitize_utf8 (p, sz);
+    ws_send_frame (client, opcode, buf, sz);
+    free (buf);
+  }
 
   return 0;
 }
