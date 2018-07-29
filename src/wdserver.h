@@ -1,11 +1,9 @@
 /**
- *    _______       _______            __        __
- *   / ____/ |     / / ___/____  _____/ /_____  / /_
- *  / / __ | | /| / /\__ \/ __ \/ ___/ //_/ _ \/ __/
- * / /_/ / | |/ |/ /___/ / /_/ / /__/ ,< /  __/ /_
- * \____/  |__/|__//____/\____/\___/_/|_|\___/\__/
+ * wdserver -- An rfc6455-complaint Web Display Server 
  *
  * The MIT License (MIT)
+ *
+ * Copyright (c) 2018 FMSoft <http://www.minigui.com>
  * Copyright (c) 2009-2016 Gerardo Orellana <hello @ goaccess.io>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -27,9 +25,40 @@
  * SOFTWARE.
  */
 
-#ifndef WS_H_INCLUDED
-#define WS_H_INCLUDED
+#ifndef WD_SERVER_H_INCLUDED
+#define WD_SERVER_H_INCLUDED
 
-#define GW_VERSION "0.2"
+#define GW_VERSION "0.8"
 
-#endif // for #ifndef WS_H
+/* The pixel format */
+#define COMMLCD_TRUE_RGB565      3
+#define COMMLCD_TRUE_RGB8888     4
+
+struct _vfb_info {
+    short height;
+    short width;        // Size of the screen
+    short bpp;          // Depth (bits-per-pixel)
+    short type;         // Pixel type
+    short rlen;         // Length of one scan line in bytes
+    void  *fb;          // Frame buffer
+    short async_update;
+};
+
+#define USS_PATH    "/var/tmp/web-display-server"
+#define USC_PATH    "/var/tmp/web-display-client-P%d"
+
+#define USC_PERM    S_IRWXU            /* rwx for user only */
+
+#define FT_VFBINFO      10
+#define FT_PING         11
+#define FT_PONG         12
+#define FT_EVENT        13
+#define FT_DIRTYPIXELS  14
+
+struct _frame_header {
+    int type;
+    size_t payload_len;
+    unsigned char payload[0];
+};
+
+#endif // for #ifndef WD_SERVER_H

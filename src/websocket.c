@@ -52,6 +52,7 @@
 #include "config.h"
 #endif
 
+#include "wdserver.h"
 #include "websocket.h"
 #include "unixsocket.h"
 

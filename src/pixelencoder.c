@@ -33,6 +33,7 @@
 #include <png.h>
 
 #include "log.h"
+#include "wdserver.h"
 #include "unixsocket.h"
 #include "pixelencoder.h"
 
