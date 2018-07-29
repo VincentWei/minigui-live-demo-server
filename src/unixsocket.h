@@ -1,10 +1,5 @@
 /**
- *    _______       _______            __        __
- *   / ____/ |     / / ___/____  _____/ /_____  / /_
- *  / / __ | | /| / /\__ \/ __ \/ ___/ //_/ _ \/ __/
- * / /_/ / | |/ |/ /___/ / /_/ / /__/ ,< /  __/ /_
- * \____/  |__/|__//____/\____/\___/_/|_|\___/\__/
- *
+ * unixsocket.h: Utilities for UnixSocket server.
  *
  * Copyright (c) 2018 FMSoft
  * Author: Vincent Wei (https://github.com/VincentWei)
@@ -58,7 +53,7 @@ typedef struct USClient_
 int us_listen (const char* name);
 int us_accept (int listenfd, pid_t *pidptr, uid_t *uidptr);
 
-pid_t us_launch_client (const char* demo_name, const char* video_mode);
+pid_t us_launch_client (const char* demo_name);
 int us_on_connected (USClient* us_client, const char* video_mode);
 int us_ping_client (const USClient* us_client);
 int us_on_client_data (USClient* us_client);

@@ -11,7 +11,7 @@ but the MiniGUI app is running in your IoT device actually.
 
 1. A webpage connects to the Server via a URI like this:
 
-        ws://<domain.nam>:7777/<display-client-name>?width=<horizontal-resolution-in-pixel>&height=<vertical-resolution-in-pixel>
+        ws://<domain.nam>:7788/<display-client-name>
 
 2. A local display client specified by the URI will be forked and executed
    by the Server.

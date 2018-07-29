@@ -28,7 +28,7 @@
 #ifndef WD_SERVER_H_INCLUDED
 #define WD_SERVER_H_INCLUDED
 
-#define GW_VERSION "0.8"
+#define WD_VERSION "0.8"
 
 /* The pixel format */
 #define COMMLCD_TRUE_RGB565      3

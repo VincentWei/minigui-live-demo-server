@@ -144,7 +144,7 @@ static struct _demo_info {
     {"cbplusui", "/usr/local/bin/cbplusui", "240x240-16bpp"},
 };
 
-pid_t us_launch_client (const char* demo_name, const char* video_mode)
+pid_t us_launch_client (const char* demo_name)
 {
     int i, found = -1;
     pid_t pid = 0;
@@ -161,14 +161,12 @@ pid_t us_launch_client (const char* demo_name, const char* video_mode)
     }
 
     if ((pid = vfork ()) > 0) {
-        ACCESS_LOG (("fork child for %s of %s\n", demo_name, video_mode));
+        ACCESS_LOG (("fork child for %s\n", demo_name));
     }
     else if (pid == 0) {
         char env_mode [32];
-        if (video_mode == NULL)
-            video_mode = _demo_list[found].def_mode;
         strcpy (env_mode, "MG_DEFAULTMODE=");
-        strcat (env_mode, video_mode);
+        strcat (env_mode, _demo_list[found].def_mode);
 
         char *const argv[] = {_demo_list[found].demo_name, NULL};
         char *const envp[] = {"MG_GAL_ENGINE=commlcd", "MG_IAL_ENGINE=common", env_mode, NULL};

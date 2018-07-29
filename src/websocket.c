@@ -2814,7 +2814,7 @@ set_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
   /* WebSocket server socket, ready for accept() */
   FD_SET (ws_listener, &fdstate.rfds);
 
-  /* UNIX server socket, ready for accept() */
+  /* UnixSocket server socket, ready for accept() */
   FD_SET (us_listener, &fdstate.rfds);
 
   while (client_node) {
@@ -2962,7 +2962,7 @@ check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
   /* handle new WebSocket connections */
   if (FD_ISSET (ws_listener, &fdstate.rfds))
     handle_accept (ws_listener, server);
-  /* handle new UNIX socket connections */
+  /* handle new UnixSocket connections */
   else if (FD_ISSET (us_listener, &fdstate.rfds))
     handle_us_accept (us_listener, server);
 
@@ -2972,20 +2972,20 @@ check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
     client = (WSClient*)(client_node->data);
     ws_fd = client->listener;
 
-    /* handle reading data from a client */
+    /* handle reading data from a WebSocket client */
     if (FD_ISSET (ws_fd, &fdstate.rfds))
       handle_reads (ws_fd, server);
-    /* handle sending data to a client */
+    /* handle sending data to a WebSocket client */
     else if (FD_ISSET (ws_fd, &fdstate.wfds))
       handle_writes (ws_fd, server);
 
     if (client->us_buddy) {
       us_fd = client->us_buddy->fd;
 
-      /* handle reading data from a UNIX client */
+      /* handle reading data from a UnixSocket client */
       if (FD_ISSET (us_fd, &fdstate.rfds))
         handle_us_reads (us_fd, server);
-      /* handle sending data to a UNIX client */
+      /* handle sending data to a UnixSocket client */
       else if (FD_ISSET (us_fd, &fdstate.wfds))
         handle_us_writes (us_fd, server);
     }
@@ -3035,6 +3035,7 @@ ws_start (WSServer * server)
       }
     }
 
+    check_rfds_wfds (ws_listener, us_listener, server);
   }
 }
 

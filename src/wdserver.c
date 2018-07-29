@@ -73,7 +73,7 @@ static struct option long_opts[] = {
 static void
 cmd_help (void)
 {
-  printf ("\nWDServer - %s\n\n", GW_VERSION);
+  printf ("\nWDServer - %s\n\n", WD_VERSION);
 
   printf (
   "Usage: "
@@ -151,6 +151,11 @@ setup_signals (void)
 static int
 onopen (WSClient * client)
 {
+  pid_t pid_usc;
+
+  pid_usc = us_launch_client (client->headers->path + 1);
+
+  printf ("INFO: Got a request from client (%d) %s and fork a child %d\n", client->listener, client->headers->path, pid_usc);
   return 0;
 }
 
@@ -164,6 +169,9 @@ static int
 onmessage (WSClient * client)
 {
   WSMessage **msg = &client->message;
+
+  printf ("INFO: got a message from client (%d): %s\n", client->listener, (*msg)->payload);
+
   uint32_t hsize = sizeof (uint32_t) * 3;
   char *hdr = NULL, *ptr = NULL;
 
@@ -288,7 +296,7 @@ read_option_args (int argc, char **argv)
       cmd_help ();
       return 1;
     case 'V':
-      fprintf (stdout, "GWSocket %s\n", GW_VERSION);
+      fprintf (stdout, "WDSocket %s\n", WD_VERSION);
       return 1;
     case 0:
       parse_long_opt (long_opts[idx].name, optarg);
@@ -323,7 +331,7 @@ set_self_pipe (void)
 int
 main (int argc, char **argv)
 {
-  if ((server = ws_init ("0.0.0.0", "7890")) == NULL) {
+  if ((server = ws_init ("0.0.0.0", "7788")) == NULL) {
     perror ("Error during ws_init.\n");
     exit (EXIT_FAILURE);
   }
