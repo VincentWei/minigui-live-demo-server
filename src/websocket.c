@@ -7,6 +7,8 @@
  * \____/  |__/|__//____/\____/\___/_/|_|\___/\__/
  *
  * The MIT License (MIT)
+ *
+ * Copyright (c) 2018 FMSoft <http://www.minigui.com>
  * Copyright (c) 2009-2016 Gerardo Orellana <hello @ goaccess.io>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy

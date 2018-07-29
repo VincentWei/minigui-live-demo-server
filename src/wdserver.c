@@ -1,12 +1,9 @@
 /**
- * gwsocket.c -- An rfc6455-complaint Web Socket Server
- *    _______       _______            __        __
- *   / ____/ |     / / ___/____  _____/ /_____  / /_
- *  / / __ | | /| / /\__ \/ __ \/ ___/ //_/ _ \/ __/
- * / /_/ / | |/ |/ /___/ / /_/ / /__/ ,< /  __/ /_
- * \____/  |__/|__//____/\____/\___/_/|_|\___/\__/
+ * wdserver.c -- An rfc6455-complaint Web Display Server 
  *
  * The MIT License (MIT)
+ *
+ * Copyright (c) 2018 FMSoft <http://www.minigui.com>
  * Copyright (c) 2009-2016 Gerardo Orellana <hello @ goaccess.io>
  *
  * Permission is hereby granted, free of charge, to any person obtaining a copy
@@ -40,7 +37,7 @@
 #include "config.h"
 #endif
 
-#include "gwsocket.h"
+#include "wdserver.h"
 #include "log.h"
 #include "xmalloc.h"
 #include "websocket.h"
@@ -76,11 +73,11 @@ static struct option long_opts[] = {
 static void
 cmd_help (void)
 {
-  printf ("\nGWSocket - %s\n\n", GW_VERSION);
+  printf ("\nWDServer - %s\n\n", GW_VERSION);
 
   printf (
   "Usage: "
-  "gwsocket [ options ... ] -p [--addr][--origin][...]\n"
+  "wdserver [ options ... ] -p [--addr][--origin][...]\n"
   "The following options can also be supplied to the command:\n\n"
   ""
   "  -p --port=<port>         - Specifies the port to bind.\n"
@@ -103,8 +100,11 @@ cmd_help (void)
   "  --ssl-cert=<cert.crt>    - Path to SSL certificate.\n"
   "  --ssl-key=<priv.key>     - Path to SSL private key.\n"
   "\n"
-  "See the man page for more information `man gwsocket`.\n\n"
-  "For more details visit: http://gwsocket.io\n"
+  "See the man page for more information `man wdserver`.\n\n"
+  "For more details visit: http://www.minigui.com\n"
+  "wdserver Copyright (C) 2018 by FMSoft\n"
+  "\n"
+  "wdserver is based on gwsocket\n"
   "gwsocket Copyright (C) 2016 by Gerardo Orellana"
   "\n\n"
   );

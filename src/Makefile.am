@@ -1,12 +1,12 @@
-bin_PROGRAMS = mgremoteserver
+bin_PROGRAMS = wdserver
 
-mgremoteserver_SOURCES = \
+wdserver_SOURCES = \
   base64.c     \
   base64.h     \
   gslist.c     \
   gslist.h     \
-  gwsocket.c   \
-  gwsocket.h   \
+  wdserver.c   \
+  wdserver.h   \
   log.c        \
   log.h        \
   sha1.c       \
@@ -20,4 +20,4 @@ mgremoteserver_SOURCES = \
   pixelencoder.c \
   pixelencoder.h
 
-mgremoteserver_LDADD = @DEP_LIBS@
+wdserver_LDADD = @DEP_LIBS@

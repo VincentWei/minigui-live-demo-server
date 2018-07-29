@@ -33,7 +33,7 @@
 #ifndef UNIXSOCKET_H_INCLUDED
 #define UNIXSOCKET_H_INCLUDED
 
-#define USS_PATH            "/var/tmp/mg-remote-server"
+#define USS_PATH            "/var/tmp/web-display-server"
 
 #define TABLESIZE(table)    (sizeof(table)/sizeof(table[0]))
 
