@@ -292,11 +292,12 @@ typedef struct WSServer_
 #endif
 } WSServer;
 
+size_t pack_uint32 (void *buf, uint32_t val, int convert);
+size_t unpack_uint32 (const void *buf, uint32_t * val, int convert);
+
 int ws_send_data (WSClient * client, WSOpcode opcode, const char *p, int sz);
 int ws_setfifo (const char *pipename);
 int ws_validate_string (const char *str, int len);
-size_t pack_uint32 (void *buf, uint32_t val);
-size_t unpack_uint32 (const void *buf, uint32_t * val);
 void set_nonblocking (int listener);
 void ws_set_config_accesslog (const char *accesslog);
 void ws_set_config_echomode (int echomode);

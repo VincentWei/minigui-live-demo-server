@@ -2204,9 +2204,14 @@ handle_ws_writes (int conn, WSServer * server)
  *
  * On success, the number size of uint32_t is returned. */
 size_t
-pack_uint32 (void *buf, uint32_t val)
+pack_uint32 (void *buf, uint32_t val, int convert)
 {
-  uint32_t v32 = htonl (val);
+  uint32_t v32;
+
+  if (convert)
+    v32 = htonl (val);
+  else
+    v32 = val;
   memcpy (buf, &v32, sizeof (uint32_t));
 
   return sizeof (uint32_t);
@@ -2216,11 +2221,14 @@ pack_uint32 (void *buf, uint32_t val)
  *
  * On success, the number size of uint32_t is returned. */
 size_t
-unpack_uint32 (const void *buf, uint32_t * val)
+unpack_uint32 (const void *buf, uint32_t * val, int convert)
 {
   uint32_t v32 = 0;
   memcpy (&v32, buf, sizeof (uint32_t));
-  *val = ntohl (v32);
+  if (convert)
+    *val = ntohl (v32);
+  else
+    *val = v32;
 
   return sizeof (uint32_t);
 }
@@ -2401,14 +2409,19 @@ ws_send_dirty_pixels (WSClient* ws_client, const RECT* rc_dirty, const char* png
         goto error;
     }
 
-    LOG (("Trying send content of file %s (size: %u) to client\n", png_path, my_stat.st_size));
-    p = xmalloc (sizeof (RECT) + my_stat.st_size);
+    //LOG (("Trying send content of file %s (size: %u) to client\n", png_path, my_stat.st_size));
+    p = xmalloc (sizeof (uint32_t) * 4 + my_stat.st_size);
     if (p == NULL) {
         retval = 3;
         goto error;
     }
 
-    memcpy (p, rc_dirty, sizeof (RECT));
+    char* ptr;
+    ptr = p;
+    ptr += pack_uint32 (ptr, (uint32_t)rc_dirty->left, 0);
+    ptr += pack_uint32 (ptr, (uint32_t)rc_dirty->top, 0);
+    ptr += pack_uint32 (ptr, (uint32_t)rc_dirty->right, 0);
+    ptr += pack_uint32 (ptr, (uint32_t)rc_dirty->bottom, 0);
 
     fp = fopen (png_path, "r");
     if (fp == NULL) {
@@ -2416,13 +2429,13 @@ ws_send_dirty_pixels (WSClient* ws_client, const RECT* rc_dirty, const char* png
         goto error;
     }
 
-    size = fread (p + sizeof (RECT), sizeof (char), my_stat.st_size, fp);
+    size = fread (ptr, sizeof (char), my_stat.st_size, fp);
     if (size < my_stat.st_size) {
         retval = 5;
         goto error;
     }
 
-    retval = ws_send_data (ws_client, WS_OPCODE_BIN, p, sizeof (RECT) + my_stat.st_size);
+    retval = ws_send_data (ws_client, WS_OPCODE_BIN, p, sizeof (uint32_t) * 4 + my_stat.st_size);
 
 error:
     if (p)
@@ -2446,8 +2459,7 @@ check_dirty_pixels (WSServer* server)
         int retval;
         char png_path [20];
 
-        printf ("check_dirty_pixels: UnixSocket Client #%d has dirty pixels (%d, %d, %d, %d) to send.\n",
-                us_client->pid, us_client->rc_dirty.left, us_client->rc_dirty.top, us_client->rc_dirty.right, us_client->rc_dirty.bottom);
+        //LOG (("check_dirty_pixels: UnixSocket Client #%d has dirty pixels (%d, %d, %d, %d) to send.\n", us_client->pid, us_client->rc_dirty.left, us_client->rc_dirty.top, us_client->rc_dirty.right, us_client->rc_dirty.bottom));
 
         sprintf (png_path, "/tmp/wds-%d.png", us_client->pid);
         if ((retval = save_dirty_pixels_to_png (png_path, us_client))) {

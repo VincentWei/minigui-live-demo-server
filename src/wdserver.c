@@ -168,20 +168,6 @@ onmessage (WSClient * client)
   WSMessage **msg = &client->message;
 
   printf ("INFO: got a message from client (%d): %s\n", client->listener, (*msg)->payload);
-
-  uint32_t hsize = sizeof (uint32_t) * 3;
-  char *hdr = NULL, *ptr = NULL;
-
-  hdr = calloc (hsize, sizeof (char));
-  ptr = hdr;
-  ptr += pack_uint32 (ptr, client->listener);
-  ptr += pack_uint32 (ptr, (*msg)->opcode);
-  ptr += pack_uint32 (ptr, (*msg)->payloadsz);
-
-  //ws_write_fifo (pipeout, hdr, hsize);
-  //ws_write_fifo (pipeout, (*msg)->payload, (*msg)->payloadsz);
-  free (hdr);
-
   return 0;
 }
 

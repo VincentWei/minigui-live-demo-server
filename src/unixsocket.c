@@ -139,7 +139,7 @@ static struct _demo_info {
     char* const exe_file;
     char* const def_mode;
 } _demo_list [] = {
-    {"mguxdemo", "/usr/local/bin/", "/usr/local/bin/mguxdemo", "480x640-16bpp"},
+    {"mguxdemo", "/usr/local/bin/", "/usr/local/bin/mguxdemo", "360x480-16bpp"},
     {"cbplusui", "/usr/local/bin/", "/usr/local/bin/cbplusui", "240x240-16bpp"},
 };
 
@@ -199,7 +199,6 @@ int us_on_connected (USClient* us_client)
     /* read info of virtual frame buffer */
     n = read (us_client->fd, &header, sizeof (struct _frame_header));
     if (n < sizeof (struct _frame_header) || header.type != FT_VFBINFO) {
-        printf ("us_on_connected: frame header info: %ld, %d.\n", n, header.type);
         retval = 1;
         goto error;
     }
@@ -272,7 +271,6 @@ int us_on_client_data (USClient* us_client)
     }
 
     if (n < sizeof (struct _frame_header)) {
-        printf ("us_on_client_data: read bytes %ld\n", n);
         return 1;
     }
 
