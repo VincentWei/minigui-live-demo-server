@@ -310,7 +310,7 @@ int us_on_client_data (USClient* us_client)
                     dst_pixel [x*3 + 0] = (uint8_t)((pixel&0xFF0000)>>16);
                     dst_pixel [x*3 + 1] = (uint8_t)((pixel&0xFF00)>>8);
                     dst_pixel [x*3 + 2] = (uint8_t)((pixel&0xFF));
-                    src_pixel += us_client->bytes_per_pixel;
+                    src_pixel += 4;
                 }
             }
             else {
@@ -319,7 +319,7 @@ int us_on_client_data (USClient* us_client)
                     dst_pixel [x*3 + 0] = (((pixel&0xF800)>>11)<<3);
                     dst_pixel [x*3 + 1] = (((pixel&0x07E0)>>5)<<2);
                     dst_pixel [x*3 + 2] = ((pixel&0x001F)<<3);
-                    src_pixel += us_client->bytes_per_pixel;
+                    src_pixel += 2;
                 }
             }
 
@@ -329,10 +329,16 @@ int us_on_client_data (USClient* us_client)
         free (buff);
 
         /* merge the dirty rect to whole dirty rect */
-        us_client->rc_dirty.left = (us_client->rc_dirty.left < rc_dirty.left) ? us_client->rc_dirty.left : rc_dirty.left;
-        us_client->rc_dirty.top  = (us_client->rc_dirty.top < rc_dirty.top) ? us_client->rc_dirty.top : rc_dirty.top;
-        us_client->rc_dirty.right = (us_client->rc_dirty.right > rc_dirty.right) ? us_client->rc_dirty.right : rc_dirty.right;
-        us_client->rc_dirty.bottom = (us_client->rc_dirty.bottom > rc_dirty.bottom) ? us_client->rc_dirty.bottom : rc_dirty.bottom;
+        if ((us_client->rc_dirty.right - us_client->rc_dirty.left) <= 0
+                && (us_client->rc_dirty.bottom - us_client->rc_dirty.top) <= 0) {
+            us_client->rc_dirty = rc_dirty;
+        }
+        else {
+            us_client->rc_dirty.left = (us_client->rc_dirty.left < rc_dirty.left) ? us_client->rc_dirty.left : rc_dirty.left;
+            us_client->rc_dirty.top  = (us_client->rc_dirty.top < rc_dirty.top) ? us_client->rc_dirty.top : rc_dirty.top;
+            us_client->rc_dirty.right = (us_client->rc_dirty.right > rc_dirty.right) ? us_client->rc_dirty.right : rc_dirty.right;
+            us_client->rc_dirty.bottom = (us_client->rc_dirty.bottom > rc_dirty.bottom) ? us_client->rc_dirty.bottom : rc_dirty.bottom;
+        }
     }
     else if (header.type == FT_PONG) {
         LOG (("us_on_client_data: got FT_PONG from client: %d\n", us_client->fd));

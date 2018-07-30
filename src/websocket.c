@@ -2446,7 +2446,9 @@ check_dirty_pixels (WSServer* server)
         int retval;
         char png_path [20];
 
-        printf ("check_dirty_pixels: UnixSocket Client #%d has dirty pixels to send.\n", us_client->pid);
+        printf ("check_dirty_pixels: UnixSocket Client #%d has dirty pixels (%d, %d, %d, %d) to send.\n",
+                us_client->pid, us_client->rc_dirty.left, us_client->rc_dirty.top, us_client->rc_dirty.right, us_client->rc_dirty.bottom);
+
         sprintf (png_path, "/tmp/wds-%d.png", us_client->pid);
         if ((retval = save_dirty_pixels_to_png (png_path, us_client))) {
             printf ("check_dirty_pixels: failed when calling save_dirty_pixels_to_png: %d\n", retval);

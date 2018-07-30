@@ -122,7 +122,7 @@ int save_dirty_pixels_to_png (const char* file_name, const USClient* us_client)
         png_set_sBIT (png_ptr, info_ptr, &sig_bit);
         for (int i = 0; i < height; i++) {
             pixel_rows[i] = (png_bytep)(us_client->shadow_fb
-                    + us_client->vfb_info.rlen * (us_client->rc_dirty.top + i) + us_client->rc_dirty.left * bytes_per_pixel);
+                    + us_client->row_pitch * (us_client->rc_dirty.top + i) + us_client->rc_dirty.left * bytes_per_pixel);
         }
     }
 
