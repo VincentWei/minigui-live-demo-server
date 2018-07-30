@@ -233,28 +233,6 @@ new_wsmessage (void)
   return msg;
 }
 
-#ifndef UNIXSOCKET
-/* Allocate memory for a websocket pipeout */
-static WSPipeOut *
-new_wspipeout (void)
-{
-  WSPipeOut *pipeout = xcalloc (1, sizeof (WSPipeOut));
-  pipeout->fd = -1;
-
-  return pipeout;
-}
-
-/* Allocate memory for a websocket pipein */
-static WSPipeIn *
-new_wspipein (void)
-{
-  WSPipeIn *pipein = xcalloc (1, sizeof (WSPipeIn));
-  pipein->fd = -1;
-
-  return pipein;
-}
-#endif
-
 /* Escapes the special characters, e.g., '\n', '\r', '\t', '\'
  * in the string source by inserting a '\' before them.
  *
@@ -541,67 +519,10 @@ ws_remove_dangling_clients (void *value, void *user_data)
   return 0;
 }
 
-#ifndef UNIXSOCKET
-/* Do some housekeeping on the named pipe data packet. */
-static void
-ws_clear_fifo_packet (WSPacket * packet)
-{
-  if (!packet)
-    return;
-
-  if (packet->data)
-    free (packet->data);
-  free (packet);
-}
-
-/* Do some housekeeping on the named pipe. */
-static void
-ws_clear_pipein (WSPipeIn * pipein)
-{
-  WSPacket **packet = &pipein->packet;
-  if (!pipein)
-    return;
-
-  if (pipein->fd != -1)
-    close (pipein->fd);
-
-  ws_clear_fifo_packet (*packet);
-  free (pipein);
-
-  if (wsconfig.pipein && access (wsconfig.pipein, F_OK) != -1)
-    unlink (wsconfig.pipein);
-}
-
-/* Do some housekeeping on the named pipe. */
-static void
-ws_clear_pipeout (WSPipeOut * pipeout)
-{
-  if (!pipeout)
-    return;
-
-  if (pipeout->fd != -1)
-    close (pipeout->fd);
-
-  free (pipeout);
-
-  if (wsconfig.pipeout && access (wsconfig.pipeout, F_OK) != -1)
-    unlink (wsconfig.pipeout);
-}
-
-#endif
-
 /* Stop the server and do some clearning. */
 void
 ws_stop (WSServer * server)
 {
-#ifndef UNIXSOCKET
-  WSPipeIn **pipein = &server->pipein;
-  WSPipeOut **pipeout = &server->pipeout;
-
-  ws_clear_pipein (*pipein);
-  ws_clear_pipeout (*pipeout);
-#endif
-
   /* close access log (if any) */
   if (wsconfig.accesslog)
     access_log_close ();
@@ -1612,11 +1533,7 @@ ws_get_handshake (WSClient * client, WSServer * server)
 
   /* upon success, call onopen() callback */
   if (server->onopen && wsconfig.strict && !wsconfig.echomode)
-#ifdef UNIXSOCKET
     server->onopen (client);
-#else
-    server->onopen (server->pipeout, client);
-#endif
   client->headers->reading = 0;
 
   /* do access logging */
@@ -1875,19 +1792,8 @@ ws_handle_text_bin (WSClient * client, WSServer * server)
     /* just echo the message to the client */
     if (wsconfig.echomode)
       ws_send_data (client, (*msg)->opcode, (*msg)->payload, (*msg)->payloadsz);
-    /* just pipe out the message */
-    else if (!wsconfig.strict)
-#ifdef UNIXSOCKET
-      ;
-#else
-      ws_write_fifo (server->pipeout, (*msg)->payload, (*msg)->payloadsz);
-#endif
     else
-#ifdef UNIXSOCKET
       server->onmessage (client);
-#else
-      server->onmessage (server->pipeout, client);
-#endif
   }
   ws_free_message (client);
 }
@@ -2168,11 +2074,7 @@ handle_tcp_close (int conn, WSClient * client, WSServer * server)
   shutdown (conn, SHUT_RDWR);
   /* upon close, call onclose() callback */
   if (server->onclose && wsconfig.strict && !wsconfig.echomode)
-#ifdef UNIXSOCKET
     (*server->onclose) (client);
-#else
-    (*server->onclose) (server->pipeout, client);
-#endif
 
   /* do access logging */
   gettimeofday (&client->end_proc, NULL);
@@ -2337,430 +2239,6 @@ unpack_uint32 (const void *buf, uint32_t * val)
   return sizeof (uint32_t);
 }
 
-#ifndef UNIXSOCKET
-/* Create named pipe (FIFO) with the given pipe name.
- *
- * On error, 1 is returned.
- * On success, 0 is returned. */
-int
-ws_setfifo (const char *pipename)
-{
-  struct stat fistat;
-  const char *f = pipename;
-
-  if (access (f, F_OK) == 0)
-    return 0;
-
-  if (mkfifo (f, S_IRUSR | S_IWUSR | S_IRGRP | S_IWGRP | S_IROTH | S_IWOTH) < 0)
-    FATAL ("Unable to set fifo: %s.", strerror (errno));
-  if (stat (f, &fistat) < 0)
-    FATAL ("Unable to stat fifo: %s.", strerror (errno));
-  if (!S_ISFIFO (fistat.st_mode))
-    FATAL ("pipe is not a fifo: %s.", strerror (errno));
-
-  return 0;
-}
-
-/* Open a named pipe (FIFO) for input to the server (reader). */
-static int
-ws_openfifo_in (WSPipeIn * pipein)
-{
-  ws_setfifo (wsconfig.pipein);
-  /* we should be able to open it at as reader */
-  if ((pipein->fd = open (wsconfig.pipein, O_RDWR | O_NONBLOCK)) < 0)
-    FATAL ("Unable to open fifo in: %s.", strerror (errno));
-
-  return pipein->fd;
-}
-
-
-/* Open a named pipe (FIFO) for output from the server (writer). */
-static int
-ws_openfifo_out (WSPipeOut * pipeout)
-{
-  int status = 0;
-
-  ws_setfifo (wsconfig.pipeout);
-  status = open (wsconfig.pipeout, O_WRONLY | O_NONBLOCK);
-  /* will attempt on the next write */
-  if (status == -1 && errno == ENXIO)
-    LOG (("Unable to open fifo out: %s.\n", strerror (errno)));
-  else if (status < 0)
-    FATAL ("Unable to open fifo out: %s.", strerror (errno));
-  pipeout->fd = status;
-
-  if (status != -1 && status > max_file_fd)
-    max_file_fd = status;
-
-  return status;
-}
-
-/* Set a new named pipe for incoming messages and one for outgoing
- * messages from the client. */
-static void
-ws_fifo (WSServer * server)
-{
-  wsconfig.pipein = wsconfig.pipein ? wsconfig.pipein : WS_PIPEIN;
-  wsconfig.pipeout = wsconfig.pipeout ? wsconfig.pipeout : WS_PIPEOUT;
-
-  ws_openfifo_in (server->pipein);
-  ws_openfifo_out (server->pipeout);
-}
-
-/* Clear the queue for an outgoing named pipe. */
-static void
-clear_fifo_queue (WSPipeOut * pipeout)
-{
-  WSQueue **queue = &pipeout->fifoqueue;
-  if (!(*queue))
-    return;
-
-  if ((*queue)->queued)
-    free ((*queue)->queued);
-  (*queue)->queued = NULL;
-  (*queue)->qlen = 0;
-
-  free ((*queue));
-  (*queue) = NULL;
-}
-
-/* Attempt to realloc the current sent queue for an outgoing named pip
- * (FIFO).
- *
- * On error, 1 is returned and the connection status is closed and
- * reopened.
- * On success, 0 is returned. */
-static int
-ws_realloc_fifobuf (WSPipeOut * pipeout, const char *buf, int len)
-{
-  WSQueue *queue = pipeout->fifoqueue;
-  char *tmp = NULL;
-  int newlen = 0;
-
-  newlen = queue->qlen + len;
-  tmp = realloc (queue->queued, newlen);
-  if (tmp == NULL && newlen > 0) {
-    close (pipeout->fd);
-    clear_fifo_queue (pipeout);
-    ws_openfifo_out (pipeout);
-    return 1;
-  }
-
-  queue->queued = tmp;
-  memcpy (queue->queued + queue->qlen, buf, len);
-  queue->qlen += len;
-
-  return 0;
-}
-
-/* Set into a queue the data that couldn't be sent in the outgoing
- * FIFO. */
-static void
-ws_queue_fifobuf (WSPipeOut * pipeout, const char *buffer, int len, int bytes)
-{
-  WSQueue **queue = &pipeout->fifoqueue;
-
-  if (bytes < 1)
-    bytes = 0;
-
-  (*queue) = xcalloc (1, sizeof (WSQueue));
-  (*queue)->queued = xcalloc (len - bytes, sizeof (char));
-  memcpy ((*queue)->queued, buffer + bytes, len - bytes);
-  (*queue)->qlen = len - bytes;
-
-  pipeout->status |= WS_SENDING;
-}
-
-/* Attmpt to send the given buffer to the given outgoing FIFO.
- *
- * On error, the data is queued up.
- * On success, the number of bytes sent is returned. */
-static int
-ws_write_fifo_data (WSPipeOut * pipeout, char *buffer, int len)
-{
-  int bytes = 0;
-
-  bytes = write (pipeout->fd, buffer, len);
-
-  /* At this point, the reader probably closed the pipe, so a cheap *hack* for
-   * this is to close the pipe on our end and attempt to reopen it. If unable to
-   * do so, then let it be -1 and try on the next attempt to write. */
-  if (bytes == -1 && errno == EPIPE) {
-    close (pipeout->fd);
-    ws_openfifo_out (pipeout);
-    return bytes;
-  }
-  if (bytes < len || (bytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK)))
-    ws_queue_fifobuf (pipeout, buffer, len, bytes);
-
-  return bytes;
-}
-
-/* Attempt to send the queued up client's data through the outgoing
- * named pipe (FIFO) .
- *
- * On error, 1 is returned and the connection status is set.
- * On success, the number of bytes sent is returned. */
-static int
-ws_write_fifo_cache (WSPipeOut * pipeout)
-{
-  WSQueue *queue = pipeout->fifoqueue;
-  int bytes = 0;
-
-  bytes = write (pipeout->fd, queue->queued, queue->qlen);
-
-  /* At this point, the reader probably closed the pipe, so a cheap *hack* for
-   * this is to close the pipe on our end and attempt to reopen it. If unable to
-   * do so, then let it be -1 and try on the next attempt to write. */
-  if (bytes == -1 && errno == EPIPE) {
-    close (pipeout->fd);
-    ws_openfifo_out (pipeout);
-    return bytes;
-  }
-
-  if (chop_nchars (queue->queued, bytes, queue->qlen) == 0)
-    clear_fifo_queue (pipeout);
-  else
-    queue->qlen -= bytes;
-
-  return bytes;
-}
-
-/* An entry point to attempt to send the client's data into an
- * outgoing named pipe (FIFO).
- *
- * On success, the number of bytes sent is returned. */
-int
-ws_write_fifo (WSPipeOut * pipeout, char *buffer, int len)
-{
-  int bytes = 0;
-
-  if (pipeout->fd == -1 && ws_openfifo_out (pipeout) == -1)
-    return bytes;
-
-  /* attempt to send the whole buffer buffer */
-  if (pipeout->fifoqueue == NULL)
-    bytes = ws_write_fifo_data (pipeout, buffer, len);
-  /* buffer not empty, just append new data */
-  else if (pipeout->fifoqueue != NULL && buffer != NULL) {
-    if (ws_realloc_fifobuf (pipeout, buffer, len) == 1)
-      return bytes;
-  }
-  /* send from cache buffer */
-  else {
-    bytes = ws_write_fifo_cache (pipeout);
-  }
-
-  if (pipeout->fifoqueue == NULL)
-    pipeout->status &= ~WS_SENDING;
-
-  return bytes;
-}
-
-/* Clear an incoming FIFO packet and header data. */
-static void
-clear_fifo_packet (WSPipeIn * pipein)
-{
-  memset (pipein->hdr, 0, sizeof (pipein->hdr));
-  pipein->hlen = 0;
-
-  if (pipein->packet == NULL)
-    return;
-
-  if (pipein->packet->data)
-    free (pipein->packet->data);
-  free (pipein->packet);
-  pipein->packet = NULL;
-}
-
-/* Broadcast to all connected clients the given message. */
-static int
-ws_broadcast_fifo (void *value, void *user_data)
-{
-  WSClient *client = value;
-  WSPacket *packet = user_data;
-
-  if (client == NULL || user_data == NULL)
-    return 1;
-  /* no handshake for this client */
-  if (client->headers == NULL || client->headers->ws_accept == NULL)
-    return 1;
-
-  ws_send_data (client, packet->type, packet->data, packet->size);
-
-  return 0;
-}
-
-/* Send a message from the incoming named pipe to specific client
- * given the socket id. */
-static void
-ws_send_strict_fifo_to_client (WSServer * server, int listener, WSPacket * pa)
-{
-  WSClient *client = NULL;
-
-  if (!(client = ws_get_client_from_list (listener, &server->colist)))
-    return;
-  /* no handshake for this client */
-  if (client->headers == NULL || client->headers->ws_accept == NULL)
-    return;
-  ws_send_data (client, pa->type, pa->data, pa->len);
-}
-
-/* Attempt to read message from a named pipe (FIFO).
- *
- * On error, -1 is returned.
- * On success, the number of bytes read is returned. */
-int
-ws_read_fifo (int fd, char *buf, int *buflen, int pos, int need)
-{
-  int bytes = 0;
-
-  bytes = read (fd, buf + pos, need);
-  if (bytes == -1 && (errno == EAGAIN || errno == EWOULDBLOCK))
-    return bytes;
-  else if (bytes == -1)
-    return bytes;
-  *buflen += bytes;
-
-  return bytes;
-}
-
-/* Ensure the fields coming from the named pipe are valid.
- *
- * On error, 1 is returned.
- * On success, 0 is returned. */
-static int
-validate_fifo_packet (uint32_t listener, uint32_t type, int size)
-{
-  if (listener > FD_SETSIZE) {
-    LOG (("Invalid listener\n"));
-    return 1;
-  }
-
-  if (type != WS_OPCODE_TEXT && type != WS_OPCODE_BIN) {
-    LOG (("Invalid fifo packet type\n"));
-    return 1;
-  }
-
-  if (size > wsconfig.max_frm_size) {
-    LOG (("Invalid fifo packet size\n"));
-    return 1;
-  }
-
-  return 0;
-}
-
-/* Handle reading and sending the incoming data from the named pipe on
- * strict mode. */
-static void
-handle_strict_fifo (WSServer * server)
-{
-  WSPipeIn *pi = server->pipein;
-  WSPacket **pa = &pi->packet;
-  int bytes = 0, readh = 0, need = 0;
-
-  char *ptr = NULL;
-  uint32_t listener = 0, type = 0, size = 0;
-
-  readh = pi->hlen;     /* read from header so far */
-  need = HDR_SIZE - readh;      /* need to read */
-  if (need > 0) {
-    if ((bytes = ws_read_fifo (pi->fd, pi->hdr, &pi->hlen, readh, need)) < 0)
-      return;
-    if (bytes != need)
-      return;
-  }
-
-  /* unpack size, and type */
-  ptr = pi->hdr;
-  ptr += unpack_uint32 (ptr, &listener);
-  ptr += unpack_uint32 (ptr, &type);
-  ptr += unpack_uint32 (ptr, &size);
-
-  if (validate_fifo_packet (listener, type, size) == 1) {
-    close (pi->fd);
-    clear_fifo_packet (pi);
-    ws_openfifo_in (pi);
-    return;
-  }
-
-  if ((*pa) == NULL) {
-    (*pa) = xcalloc (1, sizeof (WSPacket));
-    (*pa)->type = type;
-    (*pa)->size = size;
-    (*pa)->data = xcalloc (size, sizeof (char));
-  }
-
-  readh = (*pa)->len;   /* read from payload so far */
-  need = (*pa)->size - readh;   /* need to read */
-  if (need > 0) {
-    if ((bytes =
-         ws_read_fifo (pi->fd, (*pa)->data, &(*pa)->len, readh, need)) < 0)
-      return;
-    if (bytes != need)
-      return;
-  }
-
-  /* no clients to send data to */
-  if (list_count (server->colist) == 0) {
-    clear_fifo_packet (pi);
-    return;
-  }
-
-  /* Either send it to a specific client or brodcast message to all
-   * clients */
-  if (listener != 0)
-    ws_send_strict_fifo_to_client (server, listener, *pa);
-  else
-    list_foreach (server->colist, ws_broadcast_fifo, *pa);
-  clear_fifo_packet (pi);
-}
-
-/* Handle reading and sending the incoming data from the named pipe on
- * a fixed buffer mode. */
-static void
-handle_fixed_fifo (WSServer * server)
-{
-  WSPipeIn *pi = server->pipein;
-  WSPacket **pa = &pi->packet;
-
-  int bytes = 0;
-  char buf[PIPE_BUF] = { 0 };
-
-  if ((bytes = read (pi->fd, buf, PIPE_BUF)) < 0)
-    return;
-
-  buf[bytes] = '\0';    /* null-terminate */
-  if (ws_validate_string (buf, bytes) != 0)
-    return;
-
-  (*pa) = xcalloc (1, sizeof (WSPacket));
-  (*pa)->type = WS_OPCODE_TEXT;
-  (*pa)->size = bytes;
-  (*pa)->data = xstrdup (buf);
-
-  /* no clients to send data to */
-  if (list_count (server->colist) == 0) {
-    clear_fifo_packet (pi);
-    return;
-  }
-
-  /* brodcast message to all clients */
-  list_foreach (server->colist, ws_broadcast_fifo, *pa);
-  clear_fifo_packet (pi);
-}
-
-/* Determine which mode should use the incoming message from the FIFO. */
-static void
-handle_fifo (WSServer * server)
-{
-  if (wsconfig.strict)
-    handle_strict_fifo (server);
-  else
-    handle_fixed_fifo (server);
-}
-#endif
-
 /* Creates an endpoint for communication and start listening for
  * connections on a socket */
 static void
@@ -2793,23 +2271,6 @@ ws_socket (int *listener)
   if (listen (*listener, SOMAXCONN) == -1)
     FATAL ("Unable to listen: %s.", strerror (errno));
 }
-
-#ifndef UNIXSOCKET
-/* Handle incoming messages through a pipe (let gwsocket be the
- * reader) and outgoing messages through the pipe (writer). */
-static void
-ws_fifos (WSServer * server, WSPipeIn * pi, WSPipeOut * po)
-{
-  /* handle data via fifo */
-  if (pi->fd != -1 && FD_ISSET (pi->fd, &fdstate.rfds))
-    handle_fifo (server);
-  /* handle data via fifo */
-  if (po->fd != -1 && FD_ISSET (po->fd, &fdstate.wfds))
-    ws_write_fifo (po, NULL, 0);
-}
-#endif
-
-#ifdef UNIXSOCKET
 
 /* Set each client to determine if:
  * 1. We want to see if it has data for reading
@@ -3055,57 +2516,6 @@ ws_start (WSServer * server)
   }
 }
 
-#else
-
-/* Check each client to determine if:
- * 1. We want to see if it has data for reading
- * 2. We want to write data to it.
- * If so, set the client's socket descriptor in the descriptor set. */
-static void
-set_rfds_wfds (int listener, WSServer * server, WSPipeIn * pi, WSPipeOut * po)
-{
-  WSClient *client = NULL;
-  int conn;
-
-  /* pipe out */
-  if (po->fd != -1) {
-    if (po->status & WS_SENDING)
-      FD_SET (po->fd, &fdstate.wfds);
-  }
-  /* pipe in */
-  if (pi->fd != -1)
-    FD_SET (pi->fd, &fdstate.rfds);
-
-  /* self-pipe trick to stop the event loop */
-  FD_SET (server->self_pipe[0], &fdstate.rfds);
-
-  /* server socket, ready for accept() */
-  FD_SET (listener, &fdstate.rfds);
-
-  for (conn = 0; conn < FD_SETSIZE; ++conn) {
-    if (conn == pi->fd || conn == po->fd)
-      continue;
-    if (!(client = ws_get_client_from_list (conn, &server->colist)))
-      continue;
-
-    /* As long as we are not closing a connection, we assume we always
-     * check a client for reading */
-    if (!server->closing) {
-      FD_SET (conn, &fdstate.rfds);
-      if (conn > max_file_fd)
-        max_file_fd = conn;
-    }
-    /* Only if we have data to send the client */
-    if (client->status & WS_SENDING) {
-      FD_SET (conn, &fdstate.wfds);
-      if (conn > max_file_fd)
-        max_file_fd = conn;
-    }
-  }
-}
-
-#endif
-
 /* Set the origin so the server can force connections to have the
  * given HTTP origin. */
 void
@@ -3121,31 +2531,12 @@ ws_set_config_frame_size (int max_frm_size)
   wsconfig.max_frm_size = max_frm_size;
 }
 
-#ifdef UNIXSOCKET
 /* Set specific name for the UNIX socket. */
 void
 ws_set_config_unixsocket (const char *unixsocket)
 {
   wsconfig.unixsocket = unixsocket;
 }
-
-#else
-
-/* Set specific name for the reader named pipe. */
-void
-ws_set_config_pipein (const char *pipein)
-{
-  wsconfig.pipein = pipein;
-}
-
-/* Set specific name for the writer named pipe. */
-void
-ws_set_config_pipeout (const char *pipeout)
-{
-  wsconfig.pipeout = pipeout;
-}
-
-#endif
 
 /* Set a path and a file for the access log. */
 void
@@ -3204,21 +2595,11 @@ WSServer *
 ws_init (const char *host, const char *port)
 {
   WSServer *server = new_wsserver ();
-#ifndef UNIXSOCKET
-  server->pipein = new_wspipein ();
-  server->pipeout = new_wspipeout ();
-  memset (server->self_pipe, 0, sizeof (server->self_pipe));
-#endif
 
   wsconfig.accesslog = NULL;
   wsconfig.host = host;
   wsconfig.max_frm_size = WS_MAX_FRM_SZ;
   wsconfig.origin = NULL;
-#ifdef UNIXSOCKET
-#else
-  wsconfig.pipein = NULL;
-  wsconfig.pipeout = NULL;
-#endif
   wsconfig.sslcert = NULL;
   wsconfig.sslkey = NULL;
   wsconfig.port = port;

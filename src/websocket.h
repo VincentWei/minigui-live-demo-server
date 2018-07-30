@@ -252,35 +252,9 @@ typedef struct WSClient_
   WSStatus sslstatus;           /* ssl connection status */
 #endif
 
-#ifdef UNIXSOCKET
   pid_t pid_buddy;             /* PID of local buddy */
   struct USClient_* us_buddy;  /* UNIX socket */
-#endif
 } WSClient;
-
-#ifndef UNIXSOCKET
-/* Pipe In */
-typedef struct WSPipeIn_
-{
-  int fd;                       /* named pipe FD */
-
-  WSPacket *packet;             /* FIFO data's buffer */
-  WSEState *state;              /* FDs states */
-
-  char hdr[HDR_SIZE];           /* FIFO header's buffer */
-  int hlen;
-} WSPipeIn;
-
-/* Pipe Out */
-typedef struct WSPipeOut_
-{
-  int fd;                       /* named pipe FD */
-  WSEState *state;              /* FDs states */
-  WSQueue *fifoqueue;           /* FIFO out queue */
-  WSStatus status;              /* connection status */
-} WSPipeOut;
-
-#endif
 
 /* Config OOptions */
 typedef struct WSConfig_
@@ -289,12 +263,7 @@ typedef struct WSConfig_
   const char *accesslog;
   const char *host;
   const char *origin;
-#ifdef UNIXSOCKET
   const char *unixsocket;
-#else
-  const char *pipein;
-  const char *pipeout;
-#endif
   const char *port;
   const char *sslcert;
   const char *sslkey;
@@ -311,25 +280,9 @@ typedef struct WSServer_
   int closing;
 
   /* Callbacks */
-#ifdef UNIXSOCKET
   int (*onclose) (WSClient * client);
   int (*onmessage) (WSClient * client);
   int (*onopen) (WSClient * client);
-#else
-  int (*onclose) (WSPipeOut * pipeout, WSClient * client);
-  int (*onmessage) (WSPipeOut * pipeout, WSClient * client);
-  int (*onopen) (WSPipeOut * pipeout, WSClient * client);
-#endif
-
-#ifdef UNIXSOCKET
-#else
-  /* self-pipe */
-  int self_pipe[2];
-  /* FIFO reader */
-  WSPipeIn *pipein;
-  /* FIFO writer */
-  WSPipeOut *pipeout;
-#endif
 
   /* Connected Clients */
   GSLList *colist;
@@ -338,11 +291,6 @@ typedef struct WSServer_
   SSL_CTX *ctx;
 #endif
 } WSServer;
-
-#ifndef UNIXSOCKET
-int ws_read_fifo (int fd, char *buf, int *buflen, int pos, int need);
-int ws_write_fifo (WSPipeOut * pipeout, char *buffer, int len);
-#endif
 
 int ws_send_data (WSClient * client, WSOpcode opcode, const char *p, int sz);
 int ws_setfifo (const char *pipename);
@@ -355,12 +303,7 @@ void ws_set_config_echomode (int echomode);
 void ws_set_config_frame_size (int max_frm_size);
 void ws_set_config_host (const char *host);
 void ws_set_config_origin (const char *origin);
-#ifdef UNIXSOCKET
 void ws_set_config_unixsocket (const char *unixsocket);
-#else
-void ws_set_config_pipein (const char *pipein);
-void ws_set_config_pipeout (const char *pipeout);
-#endif
 void ws_set_config_port (const char *port);
 void ws_set_config_sslcert (const char *sslcert);
 void ws_set_config_sslkey (const char *sslkey);
