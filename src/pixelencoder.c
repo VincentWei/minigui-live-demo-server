@@ -67,7 +67,7 @@ int save_dirty_pixels_to_png (const char* file_name, const USClient* us_client)
         return -3;
     }
 
-    pixel_rows = (png_bytepp)png_malloc (png_ptr, height * sizeof (png_bytep));
+    pixel_rows = (png_bytepp)malloc (height * sizeof (png_bytep));
     if (!pixel_rows) {
         LOG (("save_dirty_pixels_to_png: failed to allocate memory for pixel_rows: %d\n", height));
         retval = 1;
@@ -98,26 +98,25 @@ int save_dirty_pixels_to_png (const char* file_name, const USClient* us_client)
             us_client->rc_dirty.right - us_client->rc_dirty.left,
             us_client->rc_dirty.bottom - us_client->rc_dirty.top, 
             8,  /* bit_depth */
-            (us_client->vfb_info.type == COMMLCD_TRUE_RGB565)?PNG_COLOR_TYPE_RGB:PNG_COLOR_TYPE_RGB_ALPHA,
+            PNG_COLOR_TYPE_RGB,
             PNG_INTERLACE_NONE, PNG_COMPRESSION_TYPE_DEFAULT, PNG_FILTER_TYPE_DEFAULT);
 
     {
         int bytes_per_pixel;
         png_color_8 sig_bit;
 
-        if (us_client->vfb_info.type == COMMLCD_TRUE_RGB565) {
-            bytes_per_pixel = 3;
+        bytes_per_pixel = 3;
+        if (us_client->vfb_info.type == USVFB_TRUE_RGB565) {
             sig_bit.red = 5;
             sig_bit.green = 6;
             sig_bit.blue = 5;
             sig_bit.alpha = 0;
         }
-        else if (us_client->vfb_info.type == COMMLCD_TRUE_RGB8888) {
-            bytes_per_pixel = 4;
+        else if (us_client->vfb_info.type == USVFB_TRUE_RGB0888) {
             sig_bit.red = 8;
             sig_bit.green = 8;
             sig_bit.blue = 8;
-            sig_bit.alpha = 8;
+            sig_bit.alpha = 0;
         }
 
         png_set_sBIT (png_ptr, info_ptr, &sig_bit);
@@ -134,7 +133,7 @@ int save_dirty_pixels_to_png (const char* file_name, const USClient* us_client)
 
 error:
     if (pixel_rows)
-        png_free (png_ptr, pixel_rows);
+        free (pixel_rows);
     if (png_ptr)
         png_destroy_write_struct (&png_ptr, &info_ptr);
     if (png_file)

@@ -147,12 +147,13 @@ setup_signals (void)
 static int
 onopen (WSClient * client)
 {
-  pid_t pid_usc;
+    pid_t pid_usc;
 
-  pid_usc = us_launch_client (client->headers->path + 1);
+    pid_usc = us_launch_client (client->headers->path + 1);
+    client->pid_buddy = pid_usc;
 
-  printf ("INFO: Got a request from client (%d) %s and fork a child %d\n", client->listener, client->headers->path, pid_usc);
-  return 0;
+    printf ("INFO: Got a request from client (%d) %s and fork a child %d\n", client->listener, client->headers->path, pid_usc);
+    return 0;
 }
 
 static int

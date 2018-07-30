@@ -135,11 +135,12 @@ int us_accept (int listenfd, pid_t *pidptr, uid_t *uidptr)
 
 static struct _demo_info {
     char* const demo_name;
+    char* const working_dir;
     char* const exe_file;
     char* const def_mode;
 } _demo_list [] = {
-    {"mguxdemo", "/usr/local/bin/mguxdemo", "480x640-16bpp"},
-    {"cbplusui", "/usr/local/bin/cbplusui", "240x240-16bpp"},
+    {"mguxdemo", "/usr/local/bin/", "/usr/local/bin/mguxdemo", "480x640-16bpp"},
+    {"cbplusui", "/usr/local/bin/", "/usr/local/bin/cbplusui", "240x240-16bpp"},
 };
 
 pid_t us_launch_client (const char* demo_name)
@@ -162,10 +163,15 @@ pid_t us_launch_client (const char* demo_name)
         ACCESS_LOG (("fork child for %s\n", demo_name));
     }
     else if (pid == 0) {
+        int retval;
         char env_mode [32];
+
+        retval = chdir (_demo_list[found].working_dir);
+        if (retval)
+            perror ("chdir");
+
         strcpy (env_mode, "MG_DEFAULTMODE=");
         strcat (env_mode, _demo_list[found].def_mode);
-
         char *const argv[] = {_demo_list[found].demo_name, NULL};
         char *const envp[] = {"MG_GAL_ENGINE=usvfb", "MG_IAL_ENGINE=usvfb", env_mode, NULL};
         if (execve (_demo_list[found].exe_file, argv, envp) < 0)
@@ -193,20 +199,22 @@ int us_on_connected (USClient* us_client)
     /* read info of virtual frame buffer */
     n = read (us_client->fd, &header, sizeof (struct _frame_header));
     if (n < sizeof (struct _frame_header) || header.type != FT_VFBINFO) {
+        printf ("us_on_connected: frame header info: %ld, %d.\n", n, header.type);
         retval = 1;
         goto error;
     }
+
     n = read (us_client->fd, &us_client->vfb_info, sizeof (struct _vfb_info));
     if (n < header.payload_len) {
         retval = 2;
         goto error;
     }
 
-    if (us_client->vfb_info.type == COMMLCD_TRUE_RGB565) {
+    if (us_client->vfb_info.type == USVFB_TRUE_RGB565) {
         us_client->bytes_per_pixel = 3;
         us_client->row_pitch = us_client->vfb_info.width * 3;
     }
-    else if (us_client->vfb_info.type == COMMLCD_TRUE_RGB8888) {
+    else if (us_client->vfb_info.type == USVFB_TRUE_RGB0888) {
         us_client->bytes_per_pixel = 3;
         us_client->row_pitch = us_client->vfb_info.width * 3;
     }
@@ -259,12 +267,17 @@ int us_on_client_data (USClient* us_client)
     struct _frame_header header;
 
     n = read (us_client->fd, &header, sizeof (struct _frame_header));
+    if (n == 0) {
+        return 0;
+    }
+
     if (n < sizeof (struct _frame_header)) {
+        printf ("us_on_client_data: read bytes %ld\n", n);
         return 1;
     }
 
     if (header.type == FT_DIRTYPIXELS) {
-        int y;
+        int y, Bpp_vfb;
         RECT rc_dirty;
 
         n = read (us_client->fd, &rc_dirty, sizeof (RECT));
@@ -278,13 +291,20 @@ int us_on_client_data (USClient* us_client)
             return 3;
         }
 
+        if (us_client->vfb_info.type == USVFB_TRUE_RGB565) {
+            Bpp_vfb = 2;
+        }
+        else {
+            Bpp_vfb = 4;
+        }
+
         uint8_t* dst_pixel = us_client->shadow_fb + us_client->row_pitch * rc_dirty.top +  rc_dirty.left * us_client->bytes_per_pixel;
         int dirty_pixels = rc_dirty.right - rc_dirty.left;
         for (y = rc_dirty.top; y < rc_dirty.bottom; y++) {
-            n = read (us_client->fd, buff, (rc_dirty.right - rc_dirty.left) * us_client->bytes_per_pixel);
+            n = read (us_client->fd, buff, (rc_dirty.right - rc_dirty.left) * Bpp_vfb);
 
             uint8_t* src_pixel = (uint8_t*)buff;
-            if (us_client->bytes_per_pixel == 4) {
+            if (Bpp_vfb == 4) {
                 for (int x = 0; x < dirty_pixels; x++) {
                     uint32_t pixel = *((uint32_t*)src_pixel);
                     dst_pixel [x*3 + 0] = (uint8_t)((pixel&0xFF0000)>>16);
@@ -319,6 +339,7 @@ int us_on_client_data (USClient* us_client)
     }
     else {
         LOG (("us_on_client_data: unknown data type: %d\n", header.type));
+        return 3;
     }
 
     return 0;
@@ -328,8 +349,8 @@ int us_check_dirty_pixels (const USClient* us_client)
 {
     struct timeval now;
 
-    if ((us_client->rc_dirty.right - us_client->rc_dirty.left) > 0
-            && (us_client->rc_dirty.bottom - us_client->rc_dirty.top) > 0)
+    if ((us_client->rc_dirty.right - us_client->rc_dirty.left) <= 0
+            && (us_client->rc_dirty.bottom - us_client->rc_dirty.top) <= 0)
         return 0;
 
     gettimeofday (&now, NULL);

@@ -55,6 +55,7 @@
 #include "wdserver.h"
 #include "websocket.h"
 #include "unixsocket.h"
+#include "pixelencoder.h"
 
 #include "base64.h"
 #include "log.h"
@@ -2297,7 +2298,7 @@ set_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
         }
     }
 
-    /* Only if we have data to send the client */
+    /* Only if we have data to send to the WebSocket client */
     if (client->status & WS_SENDING) {
       FD_SET (ws_fd, &fdstate.wfds);
       if (ws_fd > max_file_fd)
@@ -2327,7 +2328,7 @@ ws_get_client_from_list_by_buddy (pid_t pid, GSLList ** colist)
 {
   GSLList *match = NULL;
 
-  /* Find the client data for the socket in use */
+  /* Find the client matched the pid */
   if (!(match = list_find (*colist, ws_find_client_pid_in_list, &pid)))
     return NULL;
   return (WSClient *) match->data;
@@ -2353,6 +2354,9 @@ handle_us_accept (int listener, WSServer * server)
     return;
   }
 
+  client->us_buddy->fd = newfd;
+  client->us_buddy->pid = pid_buddy;
+
   LOG (("Accepted UnixSocket client: %d\n", pid_buddy));
 
   retval = us_on_connected (client->us_buddy);
@@ -2361,57 +2365,104 @@ handle_us_accept (int listener, WSServer * server)
   }
 }
 
-/* Handle a UNIX read. */
+/* Handle a UnixSocket read. */
 static void
-handle_us_reads (int conn, WSServer * server)
+handle_us_reads (USClient *us_client, WSClient* ws_client, WSServer* server)
 {
-  WSClient *client = NULL;
+  int retval;
 
-  if (!(client = ws_get_client_from_list (conn, &server->colist)))
-    return;
-
-#ifdef HAVE_LIBSSL
-  if (handle_ssl_pending_rw (conn, server, client) == 0)
-    return;
-#endif
-
-  /* *INDENT-OFF* */
-  client->start_proc = client->end_proc = (struct timeval) {0};
-  /* *INDENT-ON* */
-  gettimeofday (&client->start_proc, NULL);
-  read_client_data (client, server);
-  /* An error ocurred while reading data or connection closed */
-  if ((client->status & WS_CLOSE)) {
-    handle_ws_read_close (conn, client, server);
+  if ((retval = us_on_client_data (us_client))) {
+    printf ("handle_us_reads: failed when calling us_on_client_data: %d\n", retval);
   }
 }
 
-/* Handle a UNIX write close connection. */
+/* Handle a UnixSocket write. */
 static void
-handle_us_write_close (int conn, WSClient * client, WSServer * server)
+handle_us_writes (USClient *us_client, WSClient* ws_client, WSServer* server)
 {
-  handle_tcp_close (conn, client, server);
 }
 
-/* Handle a UNIX write. */
-static void
-handle_us_writes (int conn, WSServer * server)
+static int
+ws_send_dirty_pixels (WSClient* ws_client, const RECT* rc_dirty, const char* png_path)
 {
-  WSClient *client = NULL;
+    int retval;
+    struct stat my_stat;
+    char* p = NULL;
+    FILE* fp;
+    size_t size;
 
-  if (!(client = ws_get_client_from_list (conn, &server->colist)))
-    return;
+    if ((retval = stat (png_path, &my_stat))) {
+        retval = 1;
+        goto error;
+    }
 
-  ws_respond (client, NULL, 0); /* buffered data */
-  /* done sending data */
-  if (client->sockqueue == NULL)
-    client->status &= ~WS_SENDING;
+    if (!S_ISREG (my_stat.st_mode) || my_stat.st_size == 0) {
+        retval = 2;
+        goto error;
+    }
 
-  /* An error ocurred while sending data or while reading data but still
-   * waiting from the last send() from the server to the client.  e.g.,
-   * sending status code */
-  if ((client->status & WS_CLOSE) && !(client->status & WS_SENDING))
-    handle_us_write_close (conn, client, server);
+    LOG (("Trying send content of file %s (size: %u) to client\n", png_path, my_stat.st_size));
+    p = xmalloc (sizeof (RECT) + my_stat.st_size);
+    if (p == NULL) {
+        retval = 3;
+        goto error;
+    }
+
+    memcpy (p, rc_dirty, sizeof (RECT));
+
+    fp = fopen (png_path, "r");
+    if (fp == NULL) {
+        retval = 4;
+        goto error;
+    }
+
+    size = fread (p + sizeof (RECT), sizeof (char), my_stat.st_size, fp);
+    if (size < my_stat.st_size) {
+        retval = 5;
+        goto error;
+    }
+
+    retval = ws_send_data (ws_client, WS_OPCODE_BIN, p, sizeof (RECT) + my_stat.st_size);
+
+error:
+    if (p)
+        free (p);
+
+    return retval;
+}
+
+/* Check and send dirty pixels to WebSocket client */
+static void
+check_dirty_pixels (WSServer* server)
+{
+  GSLList *client_node = server->colist;
+  WSClient *ws_client = NULL;
+  USClient *us_client = NULL;
+
+  while (client_node) {
+    ws_client = (WSClient*)(client_node->data);
+    us_client = ws_client->us_buddy;
+    if (us_client && us_check_dirty_pixels (us_client)) {
+        int retval;
+        char png_path [20];
+
+        printf ("check_dirty_pixels: UnixSocket Client #%d has dirty pixels to send.\n", us_client->pid);
+        sprintf (png_path, "/tmp/wds-%d.png", us_client->pid);
+        if ((retval = save_dirty_pixels_to_png (png_path, us_client))) {
+            printf ("check_dirty_pixels: failed when calling save_dirty_pixels_to_png: %d\n", retval);
+            continue;
+        }
+
+        if ((retval = ws_send_dirty_pixels (ws_client, &us_client->rc_dirty, png_path))) {
+            printf ("check_dirty_pixels: failed when calling ws_send_dirty_pixels: %d\n", retval);
+            continue;
+        }
+
+        us_reset_dirty_pixels (us_client);
+    }
+
+    client_node = client_node->next;
+  }
 }
 
 /* Check and handle fds. */
@@ -2419,7 +2470,8 @@ static void
 check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
 {
   GSLList *client_node = server->colist;
-  WSClient *client = NULL;
+  WSClient *ws_client = NULL;
+  USClient *us_client = NULL;
 
   /* handle new WebSocket connections */
   if (FD_ISSET (ws_listener, &fdstate.rfds))
@@ -2429,10 +2481,10 @@ check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
     handle_us_accept (us_listener, server);
 
   while (client_node) {
-    int ws_fd, us_fd;
+    int ws_fd;
 
-    client = (WSClient*)(client_node->data);
-    ws_fd = client->listener;
+    ws_client = (WSClient*)(client_node->data);
+    ws_fd = ws_client->listener;
 
     /* handle reading data from a WebSocket client */
     if (FD_ISSET (ws_fd, &fdstate.rfds))
@@ -2441,15 +2493,15 @@ check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
     else if (FD_ISSET (ws_fd, &fdstate.wfds))
       handle_ws_writes (ws_fd, server);
 
-    if (client->us_buddy) {
-      us_fd = client->us_buddy->fd;
+    us_client = ws_client->us_buddy;
+    if (us_client) {
 
       /* handle reading data from a UnixSocket client */
-      if (FD_ISSET (us_fd, &fdstate.rfds))
-        handle_us_reads (us_fd, server);
+      if (FD_ISSET (us_client->fd, &fdstate.rfds))
+        handle_us_reads (us_client, ws_client, server);
       /* handle sending data to a UnixSocket client */
-      else if (FD_ISSET (us_fd, &fdstate.wfds))
-        handle_us_writes (us_fd, server);
+      else if (FD_ISSET (us_client->fd, &fdstate.wfds))
+        handle_us_writes (us_client, ws_client, server);
     }
 
     client_node = client_node->next;
@@ -2461,7 +2513,8 @@ check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
 void
 ws_start (WSServer * server)
 {
-  int ws_listener = 0, us_listener = 0;
+  int ws_listener = 0, us_listener = 0, retval;
+  struct timeval timeout = {0, 20000};   /* 20 ms */
 
 #ifdef HAVE_LIBSSL
   if (wsconfig.sslcert && wsconfig.sslkey) {
@@ -2488,7 +2541,14 @@ ws_start (WSServer * server)
 
     /* yep, wait patiently */
     /* should it be using epoll/kqueue? will see... */
-    if (select (max_file_fd, &fdstate.rfds, &fdstate.wfds, NULL, NULL) == -1) {
+    retval = select (max_file_fd, &fdstate.rfds, &fdstate.wfds, NULL, &timeout);
+    if (retval == 0) {
+        check_dirty_pixels (server);
+    }
+    else if (retval > 0) {
+        check_rfds_wfds (ws_listener, us_listener, server);
+    }
+    else {
       switch (errno) {
       case EINTR:
         break;
@@ -2496,8 +2556,6 @@ ws_start (WSServer * server)
         FATAL ("Unable to select: %s.", strerror (errno));
       }
     }
-
-    check_rfds_wfds (ws_listener, us_listener, server);
   }
 }
 

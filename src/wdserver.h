@@ -31,8 +31,13 @@
 #define WD_VERSION "0.8"
 
 /* The pixel format */
-#define COMMLCD_TRUE_RGB565      3
-#define COMMLCD_TRUE_RGB8888     4
+#define USVFB_PSEUDO_RGB332    1
+#define USVFB_TRUE_RGB555      2
+#define USVFB_TRUE_RGB565      3
+#define USVFB_TRUE_RGB888      4
+#define USVFB_TRUE_RGB0888     5
+#define USVFB_TRUE_ARGB1555    6
+#define USVFB_TRUE_ARGB8888    7
 
 struct _vfb_info {
     short height;
