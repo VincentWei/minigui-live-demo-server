@@ -48,15 +48,23 @@ typedef struct USClient_
     int bytes_per_pixel;            /* the bytes_per_pixel of the shadow FB */
     uint8_t* shadow_fb;             /* the shadow frame buffer */
     RECT rc_dirty;                  /* the dirty rectangle which is not sent to WSClient */
+    struct timeval last_flush_time; /* the last time flushing the dirty pixels to WebSocket client */
 } USClient;
 
 int us_listen (const char* name);
 int us_accept (int listenfd, pid_t *pidptr, uid_t *uidptr);
 
 pid_t us_launch_client (const char* demo_name);
-int us_on_connected (USClient* us_client, const char* video_mode);
+int us_on_connected (USClient* us_client);
 int us_ping_client (const USClient* us_client);
 int us_on_client_data (USClient* us_client);
+
+/* microsecond */
+#define MAX_FLUSH_PIXELS_TIME       50000
+
+int us_check_dirty_pixels (const USClient* us_client);
+void us_reset_dirty_pixels (USClient* us_client);
+
 int us_client_cleanup (USClient* us_client);
 
 #endif // for #ifndef UNIXSOCKET_H

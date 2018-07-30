@@ -36,9 +36,7 @@
 #include <sys/socket.h>
 #include <sys/fcntl.h>
 #include <sys/un.h>
-#include <sys/ipc.h>
-#include <sys/shm.h>
-#include <sys/sem.h>
+#include <sys/time.h>
 
 #include "log.h"
 #include "wdserver.h"
@@ -169,7 +167,7 @@ pid_t us_launch_client (const char* demo_name)
         strcat (env_mode, _demo_list[found].def_mode);
 
         char *const argv[] = {_demo_list[found].demo_name, NULL};
-        char *const envp[] = {"MG_GAL_ENGINE=commlcd", "MG_IAL_ENGINE=common", env_mode, NULL};
+        char *const envp[] = {"MG_GAL_ENGINE=usvfb", "MG_IAL_ENGINE=usvfb", env_mode, NULL};
         if (execve (_demo_list[found].exe_file, argv, envp) < 0)
 			fprintf (stderr, "execve error\n");
 
@@ -184,7 +182,7 @@ pid_t us_launch_client (const char* demo_name)
     return pid;
 }
 
-int us_on_connected (USClient* us_client, const char* video_mode)
+int us_on_connected (USClient* us_client)
 {
     ssize_t n = 0;
     int retval;
@@ -201,7 +199,7 @@ int us_on_connected (USClient* us_client, const char* video_mode)
     }
     n = read (us_client->fd, &us_client->vfb_info, sizeof (struct _vfb_info));
     if (n < header.payload_len) {
-        retval = 3;
+        retval = 2;
         goto error;
     }
 
@@ -215,17 +213,18 @@ int us_on_connected (USClient* us_client, const char* video_mode)
     }
     else {
         /* not support pixel type */
-        retval = 4;
+        retval = 3;
         goto error;
     }
 
     /* create shadow frame buffer */
     us_client->shadow_fb = malloc (us_client->row_pitch * us_client->vfb_info.height);
     if (us_client->shadow_fb == NULL) {
-        retval = 5;
+        retval = 4;
         goto error;
     }
 
+    gettimeofday (&us_client->last_flush_time, NULL);
     return 0;
 
 error:
@@ -250,11 +249,6 @@ int us_ping_client (const USClient* us_client)
     n = write (us_client->fd, &header, sizeof (struct _frame_header));
     if (n != sizeof (struct _frame_header)) {
         return 1;
-    }
-
-    n = read (us_client->fd, &header, sizeof (struct _frame_header));
-    if (n < sizeof (struct _frame_header) || header.type != FT_PONG) {
-        return 2;
     }
 
     return 0;
@@ -328,11 +322,43 @@ int us_on_client_data (USClient* us_client)
         us_client->rc_dirty.right = (us_client->rc_dirty.right > rc_dirty.right) ? us_client->rc_dirty.right : rc_dirty.right;
         us_client->rc_dirty.bottom = (us_client->rc_dirty.bottom > rc_dirty.bottom) ? us_client->rc_dirty.bottom : rc_dirty.bottom;
     }
+    else if (header.type == FT_PONG) {
+        LOG (("us_on_client_data: got FT_PONG from client: %d\n", us_client->fd));
+    }
     else {
         LOG (("us_on_client_data: unknown data type: %d\n", header.type));
     }
 
     return 0;
+}
+
+int us_check_dirty_pixels (const USClient* us_client)
+{
+    struct timeval now;
+
+    if ((us_client->rc_dirty.right - us_client->rc_dirty.left) > 0
+            && (us_client->rc_dirty.bottom - us_client->rc_dirty.top) > 0)
+        return 0;
+
+    gettimeofday (&now, NULL);
+    if (us_client->last_flush_time.tv_sec != now.tv_sec) {
+        return 1;
+    }
+
+    if ((now.tv_usec - us_client->last_flush_time.tv_usec) >= MAX_FLUSH_PIXELS_TIME) {
+        return 1;
+    }
+
+    return 0;
+}
+
+void us_reset_dirty_pixels (USClient* us_client)
+{
+    us_client->rc_dirty.top = 0;
+    us_client->rc_dirty.left = 0;
+    us_client->rc_dirty.right = 0;
+    us_client->rc_dirty.bottom = 0;
+    gettimeofday (&us_client->last_flush_time, NULL);
 }
 
 int us_client_cleanup (USClient* us_client)

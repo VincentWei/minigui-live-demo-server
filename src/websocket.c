@@ -190,10 +190,16 @@ new_wsserver (void)
 static WSClient *
 new_wsclient (void)
 {
-  WSClient *client = xcalloc (1, sizeof (WSClient));
-  client->status = WS_OK;
+  USClient *us_client;
+  WSClient *ws_client;
 
-  return client;
+  us_client = xcalloc (1, sizeof (USClient));
+  ws_client = xcalloc (1, sizeof (WSClient));
+
+  ws_client->us_buddy = us_client;
+  ws_client->status = WS_OK;
+
+  return ws_client;
 }
 
 /* Allocate memory for a websocket header */
@@ -473,6 +479,10 @@ ws_remove_client_from_list (WSClient * client, WSServer * server)
 
   if (client->headers)
     ws_clear_handshake_headers (client->headers);
+
+  us_client_cleanup (client->us_buddy);
+  free (client->us_buddy);
+
   list_remove_node (&server->colist, node);
 }
 
@@ -2883,7 +2893,7 @@ handle_us_accept (int listener, WSServer * server)
 {
   WSClient *client = NULL;
   pid_t pid_buddy;
-  int newfd;
+  int newfd, retval;
 
   newfd = us_accept (listener, &pid_buddy, NULL);
   if (newfd < 0) {
@@ -2893,10 +2903,16 @@ handle_us_accept (int listener, WSServer * server)
 
   client = ws_get_client_from_list_by_buddy (pid_buddy, &server->colist);
   if (client == NULL) {
+    printf ("handle_us_accept: does not find client by PID: %d\n", pid_buddy);
     return;
   }
 
-  LOG (("Accepted UNIX client: %d\n", pid_buddy));
+  LOG (("Accepted UnixSocket client: %d\n", pid_buddy));
+
+  retval = us_on_connected (client->us_buddy);
+  if (retval) {
+    printf ("handle_us_accept: failed when calling us_on_connected: %d\n", retval);
+  }
 }
 
 /* Handle a UNIX read. */
