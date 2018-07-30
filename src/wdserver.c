@@ -137,6 +137,10 @@ setup_signals (void)
     perror ("sigaction()");
     return -1;
   }
+  if (sigaction (SIGCHLD, &sa, 0) != 0) {
+    perror ("sigaction()");
+    return -1;
+  }
   return 0;
 }
 
@@ -243,6 +247,8 @@ read_option_args (int argc, char **argv)
 int
 main (int argc, char **argv)
 {
+  setup_signals ();
+
   if ((server = ws_init ("0.0.0.0", "7788")) == NULL) {
     perror ("Error during ws_init.\n");
     exit (EXIT_FAILURE);

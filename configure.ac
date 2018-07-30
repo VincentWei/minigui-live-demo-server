@@ -45,7 +45,7 @@ AC_FUNC_MALLOC
 AC_FUNC_REALLOC
 AC_CHECK_FUNCS([gettimeofday memmove memset mkfifo select socket strcasecmp strchr strerror strpbrk strstr])
 
-devel_mode="no"
+devel_mode="yes"
 AC_ARG_ENABLE(develmode,
 [   --enable-develmode      developer mode <default=no>],
 devel_mode=$enableval)
@@ -54,11 +54,6 @@ openssl="no"
 AC_ARG_WITH(openssl,
 [   --enable-openssl,       build with OpenSSL support <default=no>],
 openssl="$withval")
-
-unixsocket="yes"
-AC_ARG_WITH(unixsocket,
-[   --enable-unixsocket,    use UNIX socket instead of FIFO <default=yes>],
-unixsocket="$withval")
 
 if test "x$devel_mode" = "xyes"; then
     CPPFLAGS="$CPPFLAGS -DDEBUG -D_DEBUG"
@@ -77,12 +72,6 @@ if test "$openssl" = 'yes'; then
     AC_CHECK_LIB([crypto], [CRYPTO_num_locks],
         DEP_LIBS="$DEP_LIBS -lcrypto",
         [AC_MSG_ERROR([crypto library missing])])
-fi
-
-# Use UNIX socket 
-if test "$unixsocket" = 'yes'; then
-    AC_DEFINE(UNIXSOCKET, 1,
-                [Define if use UNIX socket instead of named pipe.])
 fi
 
 if test "$ac_cv_prog_gcc" = "yes"; then

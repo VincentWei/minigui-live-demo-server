@@ -91,9 +91,9 @@ static int max_file_fd = 0;
 static WSEState fdstate;
 static WSConfig wsconfig = { 0 };
 
-static void handle_read_close (int conn, WSClient * client, WSServer * server);
-static void handle_reads (int conn, WSServer * server);
-static void handle_writes (int conn, WSServer * server);
+static void handle_ws_read_close (int conn, WSClient * client, WSServer * server);
+static void handle_ws_reads (int conn, WSServer * server);
+static void handle_ws_writes (int conn, WSServer * server);
 #ifdef HAVE_LIBSSL
 static int shutdown_ssl (WSClient * client);
 #endif
@@ -768,18 +768,18 @@ handle_ssl_pending_rw (int conn, WSServer * server, WSClient * client)
   }
   /* trying to read but still waiting for a successful SSL_read */
   if (client->sslstatus & WS_TLS_READING) {
-    handle_reads (conn, server);
+    handle_ws_reads (conn, server);
     return 0;
   }
   /* trying to write but still waiting for a successful SSL_write */
   if (client->sslstatus & WS_TLS_WRITING) {
-    handle_writes (conn, server);
+    handle_ws_writes (conn, server);
     return 0;
   }
   /* trying to write but still waiting for a successful SSL_shutdown */
   if (client->sslstatus & WS_TLS_SHUTTING) {
     if (shutdown_ssl (client) == 0)
-      handle_read_close (conn, client, server);
+      handle_ws_read_close (conn, client, server);
     return 0;
   }
 
@@ -2104,7 +2104,7 @@ handle_tcp_close (int conn, WSClient * client, WSServer * server)
 
 /* Handle a tcp read close connection. */
 static void
-handle_read_close (int conn, WSClient * client, WSServer * server)
+handle_ws_read_close (int conn, WSClient * client, WSServer * server)
 {
   if (client->status & WS_SENDING) {
     server->closing = 1;
@@ -2115,7 +2115,7 @@ handle_read_close (int conn, WSClient * client, WSServer * server)
 
 /* Handle a new socket connection. */
 static void
-handle_accept (int listener, WSServer * server)
+handle_ws_accept (int listener, WSServer * server)
 {
   WSClient *client = NULL;
   int newfd;
@@ -2129,7 +2129,7 @@ handle_accept (int listener, WSServer * server)
     LOG (("Too busy: %d %s.\n", newfd, client->remote_ip));
 
     http_error (client, WS_TOO_BUSY_STR);
-    handle_read_close (newfd, client, server);
+    handle_ws_read_close (newfd, client, server);
     return;
   }
 #ifdef HAVE_LIBSSL
@@ -2143,7 +2143,7 @@ handle_accept (int listener, WSServer * server)
 
 /* Handle a tcp read. */
 static void
-handle_reads (int conn, WSServer * server)
+handle_ws_reads (int conn, WSServer * server)
 {
   WSClient *client = NULL;
 
@@ -2162,7 +2162,7 @@ handle_reads (int conn, WSServer * server)
   read_client_data (client, server);
   /* An error ocurred while reading data or connection closed */
   if ((client->status & WS_CLOSE)) {
-    handle_read_close (conn, client, server);
+    handle_ws_read_close (conn, client, server);
   }
 }
 
@@ -2175,7 +2175,7 @@ handle_write_close (int conn, WSClient * client, WSServer * server)
 
 /* Handle a tcp write. */
 static void
-handle_writes (int conn, WSServer * server)
+handle_ws_writes (int conn, WSServer * server)
 {
   WSClient *client = NULL;
 
@@ -2197,21 +2197,6 @@ handle_writes (int conn, WSServer * server)
    * sending status code */
   if ((client->status & WS_CLOSE) && !(client->status & WS_SENDING))
     handle_write_close (conn, client, server);
-}
-
-/* Handle reads/writes on a TCP connection. */
-static void
-ws_listen (int listener, int conn, WSServer * server)
-{
-  /* handle new connections */
-  if (FD_ISSET (conn, &fdstate.rfds) && conn == listener)
-    handle_accept (listener, server);
-  /* handle data from a client */
-  else if (FD_ISSET (conn, &fdstate.rfds) && conn != listener)
-    handle_reads (conn, server);
-  /* handle sending data to a client */
-  else if (FD_ISSET (conn, &fdstate.wfds) && conn != listener)
-    handle_writes (conn, server);
 }
 
 /* Pack the given value into a network byte order.
@@ -2397,7 +2382,7 @@ handle_us_reads (int conn, WSServer * server)
   read_client_data (client, server);
   /* An error ocurred while reading data or connection closed */
   if ((client->status & WS_CLOSE)) {
-    handle_read_close (conn, client, server);
+    handle_ws_read_close (conn, client, server);
   }
 }
 
@@ -2438,7 +2423,7 @@ check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
 
   /* handle new WebSocket connections */
   if (FD_ISSET (ws_listener, &fdstate.rfds))
-    handle_accept (ws_listener, server);
+    handle_ws_accept (ws_listener, server);
   /* handle new UnixSocket connections */
   else if (FD_ISSET (us_listener, &fdstate.rfds))
     handle_us_accept (us_listener, server);
@@ -2451,10 +2436,10 @@ check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
 
     /* handle reading data from a WebSocket client */
     if (FD_ISSET (ws_fd, &fdstate.rfds))
-      handle_reads (ws_fd, server);
+      handle_ws_reads (ws_fd, server);
     /* handle sending data to a WebSocket client */
     else if (FD_ISSET (ws_fd, &fdstate.wfds))
-      handle_writes (ws_fd, server);
+      handle_ws_writes (ws_fd, server);
 
     if (client->us_buddy) {
       us_fd = client->us_buddy->fd;
@@ -2476,7 +2461,7 @@ check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
 void
 ws_start (WSServer * server)
 {
-  int ws_listener = 0, us_listener = 0, conn = 0;
+  int ws_listener = 0, us_listener = 0;
 
 #ifdef HAVE_LIBSSL
   if (wsconfig.sslcert && wsconfig.sslkey) {

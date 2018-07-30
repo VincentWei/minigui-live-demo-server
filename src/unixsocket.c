@@ -187,7 +187,6 @@ int us_on_connected (USClient* us_client)
     ssize_t n = 0;
     int retval;
     struct _frame_header header;
-    int bytes_per_pixel;
 
     us_client->shadow_fb = NULL;
 
@@ -241,7 +240,6 @@ error:
 int us_ping_client (const USClient* us_client)
 {
     ssize_t n = 0;
-    int retval;
     struct _frame_header header;
 
     header.type = FT_PING;
@@ -258,7 +256,6 @@ int us_ping_client (const USClient* us_client)
 int us_on_client_data (USClient* us_client)
 {
     ssize_t n = 0;
-    int retval;
     struct _frame_header header;
 
     n = read (us_client->fd, &header, sizeof (struct _frame_header));
@@ -267,18 +264,13 @@ int us_on_client_data (USClient* us_client)
     }
 
     if (header.type == FT_DIRTYPIXELS) {
-        int y, bytes_per_pixel;
+        int y;
         RECT rc_dirty;
 
         n = read (us_client->fd, &rc_dirty, sizeof (RECT));
         if (n < sizeof (RECT)) {
             return 2;
         }
-
-        if (us_client->vfb_info.type == COMMLCD_TRUE_RGB565)
-            bytes_per_pixel = 2;
-        else if (us_client->vfb_info.type == COMMLCD_TRUE_RGB8888)
-            bytes_per_pixel = 4;
 
         /* copy pixel data to shadow frame buffer here */
         void* buff = malloc (us_client->vfb_info.rlen);
@@ -289,16 +281,16 @@ int us_on_client_data (USClient* us_client)
         uint8_t* dst_pixel = us_client->shadow_fb + us_client->row_pitch * rc_dirty.top +  rc_dirty.left * us_client->bytes_per_pixel;
         int dirty_pixels = rc_dirty.right - rc_dirty.left;
         for (y = rc_dirty.top; y < rc_dirty.bottom; y++) {
-            n = read (us_client->fd, buff, (rc_dirty.right - rc_dirty.left) * bytes_per_pixel);
+            n = read (us_client->fd, buff, (rc_dirty.right - rc_dirty.left) * us_client->bytes_per_pixel);
 
             uint8_t* src_pixel = (uint8_t*)buff;
-            if (bytes_per_pixel == 4) {
+            if (us_client->bytes_per_pixel == 4) {
                 for (int x = 0; x < dirty_pixels; x++) {
                     uint32_t pixel = *((uint32_t*)src_pixel);
                     dst_pixel [x*3 + 0] = (uint8_t)((pixel&0xFF0000)>>16);
                     dst_pixel [x*3 + 1] = (uint8_t)((pixel&0xFF00)>>8);
                     dst_pixel [x*3 + 2] = (uint8_t)((pixel&0xFF));
-                    src_pixel += bytes_per_pixel;
+                    src_pixel += us_client->bytes_per_pixel;
                 }
             }
             else {
@@ -307,7 +299,7 @@ int us_on_client_data (USClient* us_client)
                     dst_pixel [x*3 + 0] = (((pixel&0xF800)>>11)<<3);
                     dst_pixel [x*3 + 1] = (((pixel&0x07E0)>>5)<<2);
                     dst_pixel [x*3 + 2] = ((pixel&0x001F)<<3);
-                    src_pixel += bytes_per_pixel;
+                    src_pixel += us_client->bytes_per_pixel;
                 }
             }
 

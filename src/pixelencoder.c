@@ -44,7 +44,7 @@ int save_dirty_pixels_to_png (const char* file_name, const USClient* us_client)
     png_infop info_ptr = NULL;
     FILE *png_file = NULL;
     png_bytepp pixel_rows = NULL;
-    int height, width, i;
+    int height, width;
 
     if (us_client->rc_dirty.left < 0
             || us_client->rc_dirty.top < 0
