@@ -254,6 +254,16 @@ onmessage (WSClient * client)
             event.type = EVENT_LBUTTONUP;
         }
     }
+    else if (strncasecmp (message, "KEYDOWN ", 8) == 0) {
+        if (sscanf (message + 8, "%d", &event.value1) == 1) {
+            event.type = EVENT_KEYDOWN;
+        }
+    }
+    else if (strncasecmp (message, "KEYUP ", 6) == 0) {
+        if (sscanf (message + 6, "%d", &event.value1) == 1) {
+            event.type = EVENT_KEYUP;
+        }
+    }
 
     if (event.type != EVENT_NULL) {
         us_send_event (client->us_buddy, &event);
