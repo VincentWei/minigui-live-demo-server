@@ -268,7 +268,6 @@ typedef struct WSConfig_
   const char *sslcert;
   const char *sslkey;
   int echomode;
-  int strict;
   int max_frm_size;
   int use_ssl;
 } WSConfig;
@@ -308,7 +307,6 @@ void ws_set_config_unixsocket (const char *unixsocket);
 void ws_set_config_port (const char *port);
 void ws_set_config_sslcert (const char *sslcert);
 void ws_set_config_sslkey (const char *sslkey);
-void ws_set_config_strict (int strict);
 void ws_start (WSServer * server);
 void ws_stop (WSServer * server);
 WSServer *ws_init (const char *host, const char *port);

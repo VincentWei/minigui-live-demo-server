@@ -1534,7 +1534,7 @@ ws_get_handshake (WSClient * client, WSServer * server)
   ws_send_handshake_headers (client, client->headers);
 
   /* upon success, call onopen() callback */
-  if (server->onopen && wsconfig.strict && !wsconfig.echomode)
+  if (server->onopen && !wsconfig.echomode)
     server->onopen (client);
   client->headers->reading = 0;
 
@@ -2075,7 +2075,7 @@ handle_tcp_close (int conn, WSClient * client, WSServer * server)
 
   shutdown (conn, SHUT_RDWR);
   /* upon close, call onclose() callback */
-  if (server->onclose && wsconfig.strict && !wsconfig.echomode)
+  if (server->onclose && !wsconfig.echomode)
     (*server->onclose) (client);
 
   /* do access logging */
@@ -2393,17 +2393,23 @@ handle_us_accept (int listener, WSServer * server)
 static void
 handle_us_reads (USClient *us_client, WSClient* ws_client, WSServer* server)
 {
-  int retval;
+    int retval = us_on_client_data (us_client);
 
-  if ((retval = us_on_client_data (us_client))) {
-    printf ("handle_us_reads: failed when calling us_on_client_data: %d\n", retval);
-  }
+    if (retval < 0) {
+        LOG (("handle_us_reads: client #%d exited.\n", us_client->pid));
+        /* force to close the connection */
+        handle_tcp_close (ws_client->listener, ws_client, server);
+    }
+    else if (retval > 0) {
+        LOG (("handle_us_reads: error when handling data from client #d.\n", us_client->pid));
+    }
 }
 
 /* Handle a UnixSocket write. */
 static void
 handle_us_writes (USClient *us_client, WSClient* ws_client, WSServer* server)
 {
+    LOG (("handle_us_writes: do nothing for client #%d.\n", us_client->pid));
 }
 
 static int
@@ -2624,13 +2630,6 @@ ws_set_config_accesslog (const char *accesslog)
     FATAL ("Unable to open access log: %s.", strerror (errno));
 }
 
-/* Set if the server should handle strict named pipe handling. */
-void
-ws_set_config_strict (int strict)
-{
-  wsconfig.strict = strict;
-}
-
 /* Set the server into echo mode. */
 void
 ws_set_config_echomode (int echomode)
@@ -2679,7 +2678,6 @@ ws_init (const char *host, const char *port)
   wsconfig.sslcert = NULL;
   wsconfig.sslkey = NULL;
   wsconfig.port = port;
-  wsconfig.strict = 0;
   wsconfig.use_ssl = 0;
 
   return server;

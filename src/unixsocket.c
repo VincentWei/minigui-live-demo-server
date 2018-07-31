@@ -259,7 +259,7 @@ int us_ping_client (const USClient* us_client)
     return 0;
 }
 
-/* return zero on success; none-zero on error */
+/* return zero on success; <0 on closed; >0 on error */
 int us_on_client_data (USClient* us_client)
 {
     ssize_t n = 0;
@@ -267,7 +267,7 @@ int us_on_client_data (USClient* us_client)
 
     n = read (us_client->fd, &header, sizeof (struct _frame_header));
     if (n == 0) {
-        return 0;
+        return -1;
     }
 
     if (n < sizeof (struct _frame_header)) {

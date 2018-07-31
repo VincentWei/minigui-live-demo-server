@@ -61,7 +61,6 @@ static struct option long_opts[] = {
   {"ssl-key"        , required_argument , 0 ,  0  } ,
 #endif
   {"access-log"     , required_argument , 0 ,  0  } ,
-  {"strict"         , no_argument       , 0 ,  0  } ,
   {"version"        , no_argument       , 0 , 'V' } ,
   {"help"           , no_argument       , 0 , 'h' } ,
   {0, 0, 0, 0}
@@ -93,8 +92,6 @@ cmd_help (void)
   "                             from on the given path/file.\n"
   "  --pipeout=<path/file>    - Creates a named pipe (FIFO) that writes\n"
   "                             to on the given path/file.\n"
-  "  --strict                 - Parse messages using strict mode. See\n"
-  "                             man page for more details.\n"
   "  --ssl-cert=<cert.crt>    - Path to SSL certificate.\n"
   "  --ssl-key=<priv.key>     - Path to SSL private key.\n"
   "\n"
@@ -118,8 +115,12 @@ handle_signal_action (int sig_number)
     printf ("SIGINT caught!\n");
     /* if it fails to write, force stop */
     ws_stop (server);
-  } else if (sig_number == SIGPIPE) {
+  }
+  else if (sig_number == SIGPIPE) {
     printf ("SIGPIPE caught!\n");
+  }
+  else if (sig_number == SIGCHLD) {
+    printf ("SIGCHLD caught!\n");
   }
 }
 
@@ -184,8 +185,6 @@ parse_long_opt (const char *name, const char *oarg)
     ws_set_config_unixsocket (oarg);
   else
     ws_set_config_unixsocket (USS_PATH);
-  if (!strcmp ("strict", name))
-    ws_set_config_strict (1);
   if (!strcmp ("access-log", name))
     ws_set_config_accesslog (oarg);
 #if HAVE_LIBSSL
