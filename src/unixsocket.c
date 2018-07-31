@@ -139,10 +139,14 @@ static struct _demo_info {
     char* const exe_file;
     char* const def_mode;
 } _demo_list [] = {
-    {"mguxdemo", "/usr/local/bin/", "/usr/local/bin/mguxdemo", "360x480-16bpp"},
+    {"mguxdemo", "/usr/local/bin/", "/usr/local/bin/mguemo", "360x480-16bpp"},
     {"cbplusui", "/usr/local/bin/", "/usr/local/bin/cbplusui", "240x240-16bpp"},
 };
 
+/* return 0: bad request;
+   return > 0: launched;
+   return < 0: vfork error;
+*/
 pid_t us_launch_client (const char* demo_name)
 {
     int i, found = -1;

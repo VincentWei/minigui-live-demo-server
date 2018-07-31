@@ -1534,8 +1534,24 @@ ws_get_handshake (WSClient * client, WSServer * server)
   ws_send_handshake_headers (client, client->headers);
 
   /* upon success, call onopen() callback */
-  if (server->onopen && !wsconfig.echomode)
-    server->onopen (client);
+  if (server->onopen && !wsconfig.echomode) {
+    pid_t pid_buddy = server->onopen (client);
+
+    if (pid_buddy > 0) {
+        client->pid_buddy = pid_buddy;
+        client->status_buddy = WS_BUDDY_LAUNCHED;
+        client->launched_time_buddy = time (NULL);
+    }
+    else if (pid_buddy == 0) {
+        http_error (client, WS_BAD_REQUEST_STR);
+        return ws_set_status (client, WS_CLOSE, bytes);
+    }
+    else {
+        http_error (client, WS_INTERNAL_ERROR_STR);
+        return ws_set_status (client, WS_CLOSE, bytes);
+    }
+  }
+
   client->headers->reading = 0;
 
   /* do access logging */
@@ -2190,8 +2206,7 @@ handle_write_close (int conn, WSClient * client, WSServer * server)
 static int
 handle_ws_writes (int conn, WSServer * server)
 {
-  WSClient *client = NULL;
-
+  WSClient *client = NULL; 
   if (!(client = ws_get_client_from_list (conn, &server->colist)))
     return 1;
 
@@ -2358,6 +2373,20 @@ ws_get_client_from_list_by_buddy (pid_t pid, GSLList ** colist)
   return (WSClient *) match->data;
 }
 
+/* Handle the exit of a UnixSocket buddy */
+void ws_handle_buddy_exit (WSServer * server, pid_t pid)
+{
+    WSClient *client = NULL;
+
+    client = ws_get_client_from_list_by_buddy (pid, &server->colist);
+    if (client == NULL) {
+        printf ("ws_handle_exit_buddy: does not find client by PID: %d\n", pid);
+        return;
+    }
+
+    client->status_buddy = WS_BUDDY_EXITED;
+}
+
 /* Handle a new UNIX socket connection. */
 static void
 handle_us_accept (int listener, WSServer * server)
@@ -2378,6 +2407,7 @@ handle_us_accept (int listener, WSServer * server)
     return;
   }
 
+  client->status_buddy = WS_BUDDY_CONNECTED;
   client->us_buddy->fd = newfd;
   client->us_buddy->pid = pid_buddy;
 

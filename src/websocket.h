@@ -96,6 +96,7 @@
 #define WS_BAD_REQUEST_STR "HTTP/1.1 400 Invalid Request\r\n\r\n"
 #define WS_SWITCH_PROTO_STR "HTTP/1.1 101 Switching Protocols"
 #define WS_TOO_BUSY_STR "HTTP/1.1 503 Service Unavailable\r\n\r\n"
+#define WS_INTERNAL_ERROR_STR "HTTP/1.1 505 Internal Server Error\r\n\r\n"
 
 #define CRLF "\r\n"
 #define SHA_DIGEST_LENGTH     20
@@ -139,6 +140,14 @@ typedef enum WSSTATUS
   WS_TLS_WRITING = (1 << 7),
   WS_TLS_SHUTTING = (1 << 8),
 } WSStatus;
+
+typedef enum WSBUDDYSTATUS
+{
+  WS_BUDDY_UNKNOWN      = 0x00,
+  WS_BUDDY_LAUNCHED     = 0x01,
+  WS_BUDDY_CONNECTED    = 0x02,
+  WS_BUDDY_EXITED       = 0x03,
+} WSBuddyStatus;
 
 typedef enum WSOPCODE
 {
@@ -253,6 +262,9 @@ typedef struct WSClient_
 #endif
 
   pid_t pid_buddy;             /* PID of local buddy */
+  WSBuddyStatus status_buddy;  /* buddy status */
+  time_t launched_time_buddy;  /* Epoch time launched the buddy */
+
   struct USClient_* us_buddy;  /* UNIX socket */
 } WSClient;
 
@@ -281,7 +293,7 @@ typedef struct WSServer_
   /* Callbacks */
   int (*onclose) (WSClient * client);
   int (*onmessage) (WSClient * client);
-  int (*onopen) (WSClient * client);
+  pid_t (*onopen) (WSClient * client);
 
   /* Connected Clients */
   GSLList *colist;
@@ -293,11 +305,11 @@ typedef struct WSServer_
 
 size_t pack_uint32 (void *buf, uint32_t val, int convert);
 size_t unpack_uint32 (const void *buf, uint32_t * val, int convert);
+void set_nonblocking (int listener);
 
 int ws_send_data (WSClient * client, WSOpcode opcode, const char *p, int sz);
-int ws_setfifo (const char *pipename);
 int ws_validate_string (const char *str, int len);
-void set_nonblocking (int listener);
+void ws_handle_buddy_exit (WSServer * server, pid_t pid);
 void ws_set_config_accesslog (const char *accesslog);
 void ws_set_config_echomode (int echomode);
 void ws_set_config_frame_size (int max_frm_size);

@@ -32,6 +32,8 @@
 #include <getopt.h>
 #include <errno.h>
 #include <unistd.h>
+#include <sys/types.h>
+#include <sys/wait.h>
 
 #if HAVE_CONFIG_H
 #include "config.h"
@@ -111,17 +113,28 @@ cmd_help (void)
 static void
 handle_signal_action (int sig_number)
 {
-  if (sig_number == SIGINT) {
-    printf ("SIGINT caught!\n");
-    /* if it fails to write, force stop */
-    ws_stop (server);
-  }
-  else if (sig_number == SIGPIPE) {
-    printf ("SIGPIPE caught!\n");
-  }
-  else if (sig_number == SIGCHLD) {
-    printf ("SIGCHLD caught!\n");
-  }
+    if (sig_number == SIGINT) {
+        printf ("SIGINT caught!\n");
+        /* if it fails to write, force stop */
+        ws_stop (server);
+    }
+    else if (sig_number == SIGPIPE) {
+        printf ("SIGPIPE caught!\n");
+    }
+    else if (sig_number == SIGCHLD) {
+        int pid;
+        int status;
+
+        while ((pid = waitpid (-1, &status, WNOHANG)) > 0) {
+            if (WIFEXITED (status)) {
+                printf ("Child #%d exited with status: %x (return value: %d)\n", 
+                        pid, status, WEXITSTATUS (status));
+                ws_handle_buddy_exit (server, pid);
+            }
+            else if (WIFSIGNALED(status))
+                printf ("Child #%d signaled by %d\n", pid, WTERMSIG (status));
+        }
+    }
 }
 
 static int
@@ -145,16 +158,11 @@ setup_signals (void)
   return 0;
 }
 
-static int
+static pid_t
 onopen (WSClient * client)
 {
-    pid_t pid_usc;
-
-    pid_usc = us_launch_client (client->headers->path + 1);
-    client->pid_buddy = pid_usc;
-
-    printf ("INFO: Got a request from client (%d) %s and fork a child %d\n", client->listener, client->headers->path, pid_usc);
-    return 0;
+    printf ("INFO: Got a request from client (%d) %s and will launch a child\n", client->listener, client->headers->path);
+    return us_launch_client (client->headers->path + 1);
 }
 
 static int
