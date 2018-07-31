@@ -66,4 +66,18 @@ struct _frame_header {
     unsigned char payload[0];
 };
 
+#define EVENT_NULL          0
+#define EVENT_MOUSEMOVE     1
+#define EVENT_LBUTTONDOWN   2
+#define EVENT_LBUTTONUP     3
+
+#define EVENT_KEYDOWN       11
+#define EVENT_KEYUP         12
+
+struct _remote_event {
+    int type;
+    int value1;
+    int value2;
+};
+
 #endif // for #ifndef WD_SERVER_H

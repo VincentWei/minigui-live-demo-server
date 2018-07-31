@@ -229,16 +229,40 @@ onopen (WSClient * client)
 static int
 onclose (WSClient * client)
 {
-  return 0;
+    return 0;
 }
 
 static int
 onmessage (WSClient * client)
 {
-  WSMessage **msg = &client->message;
+    WSMessage **msg = &client->message;
+    char* message = (*msg)->payload;
+    struct _remote_event event = { EVENT_NULL };
 
-  printf ("INFO: got a message from client (%d): %s\n", client->listener, (*msg)->payload);
-  return 0;
+    if (strncasecmp (message, "MOUSEDOWN ", 10) == 0) {
+        if (sscanf (message + 10, "%d %d", &event.value1, &event.value2) == 2) {
+            event.type = EVENT_LBUTTONDOWN;
+        }
+    }
+    else if (strncasecmp (message, "MOUSEMOVE ", 10) == 0) {
+        if (sscanf (message + 10, "%d %d", &event.value1, &event.value2) == 2) {
+            event.type = EVENT_MOUSEMOVE;
+        }
+    }
+    else if (strncasecmp (message, "MOUSEUP ", 8) == 0) {
+        if (sscanf (message + 8, "%d %d", &event.value1, &event.value2) == 2) {
+            event.type = EVENT_LBUTTONUP;
+        }
+    }
+
+    if (event.type != EVENT_NULL) {
+        us_send_event (client->us_buddy, &event);
+    }
+    else {
+        LOG (("WARNING: got a unknown or bad message from client (%d): %s\n", client->listener, (*msg)->payload));
+    }
+
+    return 0;
 }
 
 static void

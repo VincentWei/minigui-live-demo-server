@@ -206,6 +206,24 @@ int us_ping_client (const USClient* us_client)
     return 0;
 }
 
+/* return zero on success; none-zero on error */
+int us_send_event (const USClient* us_client, const struct _remote_event* event)
+{
+    ssize_t n = 0;
+    struct _frame_header header;
+
+    header.type = FT_EVENT;
+    header.payload_len = sizeof (struct _remote_event);
+    n = write (us_client->fd, &header, sizeof (struct _frame_header));
+    n += write (us_client->fd, event, sizeof (struct _remote_event));
+    if (n != (sizeof (struct _frame_header) + sizeof (struct _remote_event))) {
+        LOG (("us_send_event: error when wirtting socket: %ld\n", n));
+        return 1;
+    }
+
+    return 0;
+}
+
 /* return zero on success; <0 on closed; >0 on error */
 int us_on_client_data (USClient* us_client)
 {

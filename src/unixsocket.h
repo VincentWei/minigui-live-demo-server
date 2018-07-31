@@ -56,6 +56,7 @@ int us_accept (int listenfd, pid_t *pidptr, uid_t *uidptr);
 
 int us_on_connected (USClient* us_client);
 int us_ping_client (const USClient* us_client);
+int us_send_event (const USClient* us_client, const struct _remote_event* event);
 int us_on_client_data (USClient* us_client);
 
 /* microsecond */
