@@ -93,8 +93,8 @@ static WSEState fdstate;
 static WSConfig wsconfig = { 0 };
 
 static void handle_ws_read_close (int conn, WSClient * client, WSServer * server);
-static void handle_ws_reads (int conn, WSServer * server);
-static void handle_ws_writes (int conn, WSServer * server);
+static int handle_ws_reads (int conn, WSServer * server);
+static int handle_ws_writes (int conn, WSServer * server);
 #ifdef HAVE_LIBSSL
 static int shutdown_ssl (WSClient * client);
 #endif
@@ -461,6 +461,7 @@ ws_remove_client_from_list (WSClient * client, WSServer * server)
 
   us_client_cleanup (client->us_buddy);
   free (client->us_buddy);
+  client->us_buddy = NULL;
 
   list_remove_node (&server->colist, node);
 }
@@ -2142,18 +2143,22 @@ handle_ws_accept (int listener, WSServer * server)
   LOG (("Accepted: %d %s\n", newfd, client->remote_ip));
 }
 
-/* Handle a tcp read. */
-static void
+/* Handle a tcp read:
+  0: ok;
+  <0: socket closed
+  >0: socket other error 
+*/
+static int
 handle_ws_reads (int conn, WSServer * server)
 {
   WSClient *client = NULL;
 
   if (!(client = ws_get_client_from_list (conn, &server->colist)))
-    return;
+    return 1;
 
 #ifdef HAVE_LIBSSL
   if (handle_ssl_pending_rw (conn, server, client) == 0)
-    return;
+    return = 1;
 #endif
 
   /* *INDENT-OFF* */
@@ -2164,7 +2169,10 @@ handle_ws_reads (int conn, WSServer * server)
   /* An error ocurred while reading data or connection closed */
   if ((client->status & WS_CLOSE)) {
     handle_ws_read_close (conn, client, server);
+    return -1;
   }
+
+  return 0;
 }
 
 /* Handle a tcp write close connection. */
@@ -2174,18 +2182,22 @@ handle_write_close (int conn, WSClient * client, WSServer * server)
   handle_tcp_close (conn, client, server);
 }
 
-/* Handle a tcp write. */
-static void
+/* Handle a tcp write.
+  0: ok;
+  <0: socket closed
+  >0: socket other error 
+*/
+static int
 handle_ws_writes (int conn, WSServer * server)
 {
   WSClient *client = NULL;
 
   if (!(client = ws_get_client_from_list (conn, &server->colist)))
-    return;
+    return 1;
 
 #ifdef HAVE_LIBSSL
   if (handle_ssl_pending_rw (conn, server, client) == 0)
-    return;
+    return 1;
 #endif
 
   ws_respond (client, NULL, 0); /* buffered data */
@@ -2196,8 +2208,12 @@ handle_ws_writes (int conn, WSServer * server)
   /* An error ocurred while sending data or while reading data but still
    * waiting from the last send() from the server to the client.  e.g.,
    * sending status code */
-  if ((client->status & WS_CLOSE) && !(client->status & WS_SENDING))
+  if ((client->status & WS_CLOSE) && !(client->status & WS_SENDING)) {
     handle_write_close (conn, client, server);
+    return -1;
+  }
+
+  return 0;
 }
 
 /* Pack the given value into a network byte order.
@@ -2496,26 +2512,29 @@ check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
 
   while (client_node) {
     int ws_fd;
+    int retval = 0;
 
     ws_client = (WSClient*)(client_node->data);
     ws_fd = ws_client->listener;
 
     /* handle reading data from a WebSocket client */
     if (FD_ISSET (ws_fd, &fdstate.rfds))
-      handle_ws_reads (ws_fd, server);
+      retval = handle_ws_reads (ws_fd, server);
     /* handle sending data to a WebSocket client */
     else if (FD_ISSET (ws_fd, &fdstate.wfds))
-      handle_ws_writes (ws_fd, server);
+      retval = handle_ws_writes (ws_fd, server);
 
-    us_client = ws_client->us_buddy;
-    if (us_client) {
+    if (retval >= 0) {
+        us_client = ws_client->us_buddy;
+        if (us_client) {
 
-      /* handle reading data from a UnixSocket client */
-      if (FD_ISSET (us_client->fd, &fdstate.rfds))
-        handle_us_reads (us_client, ws_client, server);
-      /* handle sending data to a UnixSocket client */
-      else if (FD_ISSET (us_client->fd, &fdstate.wfds))
-        handle_us_writes (us_client, ws_client, server);
+          /* handle reading data from a UnixSocket client */
+          if (FD_ISSET (us_client->fd, &fdstate.rfds))
+            handle_us_reads (us_client, ws_client, server);
+          /* handle sending data to a UnixSocket client */
+          else if (FD_ISSET (us_client->fd, &fdstate.wfds))
+            handle_us_writes (us_client, ws_client, server);
+        }
     }
 
     client_node = client_node->next;
