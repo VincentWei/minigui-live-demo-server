@@ -54,7 +54,6 @@ typedef struct USClient_
 int us_listen (const char* name);
 int us_accept (int listenfd, pid_t *pidptr, uid_t *uidptr);
 
-pid_t us_launch_client (const char* demo_name);
 int us_on_connected (USClient* us_client);
 int us_ping_client (const USClient* us_client);
 int us_on_client_data (USClient* us_client);

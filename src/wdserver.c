@@ -159,11 +159,71 @@ setup_signals (void)
   return 0;
 }
 
+static struct _demo_info {
+    char* const demo_name;
+    char* const working_dir;
+    char* const exe_file;
+    char* const def_mode;
+} _demo_list [] = {
+    {"mguxdemo", "/usr/local/bin/", "/usr/local/bin/mguxdemo", "360x480-16bpp"},
+    {"cbplusui", "/usr/local/bin/", "/usr/local/bin/cbplusui", "240x240-16bpp"},
+};
+
+/* return 0: bad request;
+   return > 0: launched;
+   return < 0: vfork error;
+*/
+static pid_t
+wd_launch_client (const char* demo_name)
+{
+    int i, found = -1;
+    pid_t pid = 0;
+
+    for (i = 0; i < TABLESIZE (_demo_list); i++) {
+        if (strcmp (_demo_list[i].demo_name, demo_name) == 0) {
+            found = i;
+            break;
+        }
+    }
+    
+    if (found < 0) {
+        return 0;
+    }
+
+    if ((pid = vfork ()) > 0) {
+        ACCESS_LOG (("fork child for %s\n", demo_name));
+    }
+    else if (pid == 0) {
+        int retval;
+        char env_mode [32];
+
+        retval = chdir (_demo_list[found].working_dir);
+        if (retval)
+            perror ("chdir");
+
+        strcpy (env_mode, "MG_DEFAULTMODE=");
+        strcat (env_mode, _demo_list[found].def_mode);
+        char *const argv[] = {_demo_list[found].demo_name, NULL};
+        char *const envp[] = {"MG_GAL_ENGINE=usvfb", "MG_IAL_ENGINE=usvfb", env_mode, NULL};
+        if (execve (_demo_list[found].exe_file, argv, envp) < 0)
+			fprintf (stderr, "execve error\n");
+
+        perror ("execl");
+        _exit (1);
+    }
+    else {
+        perror ("vfork");
+        return -1;
+    }
+
+    return pid;
+}
+
 static pid_t
 onopen (WSClient * client)
 {
     printf ("INFO: Got a request from client (%d) %s and will launch a child\n", client->listener, client->headers->path);
-    return us_launch_client (client->headers->path + 1);
+    return wd_launch_client (client->headers->path + 1);
 }
 
 static int
