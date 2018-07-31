@@ -900,6 +900,8 @@ accept_client (int listener, GSLList ** colist)
   if ((newfd = accept (listener, (struct sockaddr *) &raddr, &alen)) == -1)
     FATAL ("Unable to set accept: %s.", strerror (errno));
 
+  fcntl (newfd, F_SETFD, FD_CLOEXEC);
+
   if (newfd == -1) {
     LOG (("Unable to accept: %s.", strerror (errno)));
     return newfd;
@@ -2284,6 +2286,8 @@ ws_socket (int *listener)
   /* Create a TCP socket.  */
   *listener = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
 
+  fcntl (*listener, F_SETFD, FD_CLOEXEC);
+
   /* Options */
   if (setsockopt (*listener, SOL_SOCKET, SO_REUSEADDR, &ov, sizeof (ov)) == -1)
     FATAL ("Unable to set setsockopt: %s.", strerror (errno));
@@ -2451,7 +2455,7 @@ ws_send_dirty_pixels (WSClient* ws_client, const RECT* rc_dirty, const char* png
     int retval;
     struct stat my_stat;
     char* p = NULL;
-    FILE* fp;
+    FILE* fp = NULL;
     size_t size;
 
     if ((retval = stat (png_path, &my_stat))) {
@@ -2493,6 +2497,9 @@ ws_send_dirty_pixels (WSClient* ws_client, const RECT* rc_dirty, const char* png
     retval = ws_send_data (ws_client, WS_OPCODE_BIN, p, sizeof (uint32_t) * 4 + my_stat.st_size);
 
 error:
+    if (fp)
+        fclose (fp);
+
     if (p)
         free (p);
 
@@ -2631,7 +2638,6 @@ void
 ws_start (WSServer * server)
 {
   int ws_listener = 0, us_listener = 0, retval;
-  struct timeval timeout = {0, 20000};   /* 20 ms */
 
 #ifdef HAVE_LIBSSL
   if (wsconfig.sslcert && wsconfig.sslkey) {
@@ -2647,6 +2653,7 @@ ws_start (WSServer * server)
   ws_socket (&ws_listener);
 
   while (1) {
+    struct timeval timeout = {0, 10000};   /* 10 ms */
     max_file_fd = MAX (ws_listener, us_listener);
 
     /* Clear out the fd sets for this iteration. */

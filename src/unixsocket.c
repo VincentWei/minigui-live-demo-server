@@ -100,6 +100,8 @@ int us_accept (int listenfd, pid_t *pidptr, uid_t *uidptr)
     if ( (clifd = accept (listenfd, (struct sockaddr *) &unix_addr, &len)) < 0)
         return (-1);        /* often errno=EINTR, if signal caught */
 
+    fcntl (clifd, F_SETFD, FD_CLOEXEC);
+
     /* obtain the client's uid from its calling address */
     len -= /* th sizeof(unix_addr.sun_len) - */ sizeof(unix_addr.sun_family);
                     /* len of pathname */
