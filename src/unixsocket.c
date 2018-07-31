@@ -389,7 +389,8 @@ int us_client_cleanup (USClient* us_client)
         us_client->shadow_fb = NULL;
     }
 
-    close (us_client->fd);
+    if (us_client->fd >= 0)
+        close (us_client->fd);
     us_client->fd = -1;
 
     return 0;

@@ -191,16 +191,17 @@ new_wsserver (void)
 static WSClient *
 new_wsclient (void)
 {
-  USClient *us_client;
-  WSClient *ws_client;
+    USClient *us_client;
+    WSClient *ws_client;
 
-  us_client = xcalloc (1, sizeof (USClient));
-  ws_client = xcalloc (1, sizeof (WSClient));
+    us_client = xcalloc (1, sizeof (USClient));
+    ws_client = xcalloc (1, sizeof (WSClient));
 
-  ws_client->us_buddy = us_client;
-  ws_client->status = WS_OK;
+    us_client->fd = -1;
+    ws_client->us_buddy = us_client;
+    ws_client->status = WS_OK;
 
-  return ws_client;
+    return ws_client;
 }
 
 /* Allocate memory for a websocket header */
@@ -451,19 +452,19 @@ ws_clear_handshake_headers (WSHeaders * headers)
 static void
 ws_remove_client_from_list (WSClient * client, WSServer * server)
 {
-  GSLList *node = NULL;
+    GSLList *node = NULL;
 
-  if (!(node = ws_get_list_node_from_list (client->listener, &server->colist)))
-    return;
+    if (!(node = ws_get_list_node_from_list (client->listener, &server->colist)))
+        return;
 
-  if (client->headers)
-    ws_clear_handshake_headers (client->headers);
+    if (client->headers)
+        ws_clear_handshake_headers (client->headers);
 
-  us_client_cleanup (client->us_buddy);
-  free (client->us_buddy);
-  client->us_buddy = NULL;
+    us_client_cleanup (client->us_buddy);
+    free (client->us_buddy);
+    client->us_buddy = NULL;
 
-  list_remove_node (&server->colist, node);
+    list_remove_node (&server->colist, node);
 }
 
 #if HAVE_LIBSSL
@@ -2376,8 +2377,10 @@ ws_get_client_from_list_by_buddy (pid_t pid, GSLList ** colist)
 /* Handle the exit of a UnixSocket buddy */
 void ws_handle_buddy_exit (WSServer * server, pid_t pid)
 {
-    WSClient *client = NULL;
+    return;
 
+    WSClient *client = NULL;
+    /* race condition if we change the status of the client in a signal hanlder */
     client = ws_get_client_from_list_by_buddy (pid, &server->colist);
     if (client == NULL) {
         printf ("ws_handle_exit_buddy: does not find client by PID: %d\n", pid);
@@ -2531,50 +2534,95 @@ check_dirty_pixels (WSServer* server)
   }
 }
 
+/* Check Zombie local buddy client */
+static void check_buddy_client (WSServer * server)
+{
+    GSLList *client_node = server->colist;
+    WSClient *ws_client = NULL;
+
+    while (client_node) {
+        int ws_fd;
+
+        ws_client = (WSClient*)(client_node->data);
+        ws_fd = ws_client->listener;
+
+        if (ws_client->status_buddy == WS_BUDDY_LAUNCHED
+                && (time (NULL) - ws_client->launched_time_buddy) > 10) {
+            LOG (("check_rfds_wfds: force to close client #%d because long tiem no connection\n", ws_fd));
+            handle_tcp_close (ws_fd, ws_client, server);
+        }
+        else if (ws_client->status_buddy == WS_BUDDY_EXITED) {
+            LOG (("check_rfds_wfds: force to close client #%d because already exited.\n", ws_fd));
+            handle_tcp_close (ws_fd, ws_client, server);
+        }
+
+        client_node = client_node->next;
+    }
+}
+
 /* Check and handle fds. */
 static void
 check_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
 {
-  GSLList *client_node = server->colist;
-  WSClient *ws_client = NULL;
-  USClient *us_client = NULL;
+    GSLList *client_node = server->colist;
+    WSClient *ws_client = NULL;
+    USClient *us_client = NULL;
 
-  /* handle new WebSocket connections */
-  if (FD_ISSET (ws_listener, &fdstate.rfds))
-    handle_ws_accept (ws_listener, server);
-  /* handle new UnixSocket connections */
-  else if (FD_ISSET (us_listener, &fdstate.rfds))
-    handle_us_accept (us_listener, server);
+    /* handle new WebSocket connections */
+    if (FD_ISSET (ws_listener, &fdstate.rfds))
+        handle_ws_accept (ws_listener, server);
+    /* handle new UnixSocket connections */
+    else if (FD_ISSET (us_listener, &fdstate.rfds))
+        handle_us_accept (us_listener, server);
 
-  while (client_node) {
-    int ws_fd;
-    int retval = 0;
+    while (client_node) {
+        int ws_fd;
+        int retval = 0;
 
-    ws_client = (WSClient*)(client_node->data);
-    ws_fd = ws_client->listener;
-
-    /* handle reading data from a WebSocket client */
-    if (FD_ISSET (ws_fd, &fdstate.rfds))
-      retval = handle_ws_reads (ws_fd, server);
-    /* handle sending data to a WebSocket client */
-    else if (FD_ISSET (ws_fd, &fdstate.wfds))
-      retval = handle_ws_writes (ws_fd, server);
-
-    if (retval >= 0) {
+        ws_client = (WSClient*)(client_node->data);
         us_client = ws_client->us_buddy;
-        if (us_client) {
+        ws_fd = ws_client->listener;
 
-          /* handle reading data from a UnixSocket client */
-          if (FD_ISSET (us_client->fd, &fdstate.rfds))
-            handle_us_reads (us_client, ws_client, server);
-          /* handle sending data to a UnixSocket client */
-          else if (FD_ISSET (us_client->fd, &fdstate.wfds))
-            handle_us_writes (us_client, ws_client, server);
+        /* check died buddy */
+        {
+            int free_client = 0;
+            if (ws_client->status_buddy == WS_BUDDY_LAUNCHED
+                    && (time (NULL) - ws_client->launched_time_buddy) > 10) {
+                free_client = 1;
+            }
+            else if (ws_client->status_buddy == WS_BUDDY_EXITED) {
+                free_client = 1;
+            }
+
+            if (free_client) {
+                handle_tcp_close (ws_fd, ws_client, server);
+                printf ("check_rfds_wfds: force to close client #%d\n", ws_fd);
+                if (FD_ISSET (ws_fd, &fdstate.rfds))
+                    FD_CLR (ws_fd, &fdstate.rfds);
+                if (FD_ISSET (ws_fd, &fdstate.wfds))
+                    FD_CLR (ws_fd, &fdstate.wfds);
+            }
         }
-    }
 
-    client_node = client_node->next;
-  }
+        /* handle reading data from a WebSocket client */
+        if (FD_ISSET (ws_fd, &fdstate.rfds))
+            retval = handle_ws_reads (ws_fd, server);
+        /* handle sending data to a WebSocket client */
+        else if (FD_ISSET (ws_fd, &fdstate.wfds))
+            retval = handle_ws_writes (ws_fd, server);
+
+        if (retval >= 0 && ws_client->status_buddy == WS_BUDDY_CONNECTED) {
+
+            /* handle reading data from a UnixSocket client */
+            if (FD_ISSET (us_client->fd, &fdstate.rfds))
+                handle_us_reads (us_client, ws_client, server);
+            /* handle sending data to a UnixSocket client */
+            else if (FD_ISSET (us_client->fd, &fdstate.wfds))
+                handle_us_writes (us_client, ws_client, server);
+        }
+
+        client_node = client_node->next;
+    }
 }
 
 /* Start the websocket server and start to monitor multiple file
@@ -2612,6 +2660,7 @@ ws_start (WSServer * server)
     /* should it be using epoll/kqueue? will see... */
     retval = select (max_file_fd, &fdstate.rfds, &fdstate.wfds, NULL, &timeout);
     if (retval == 0) {
+        check_buddy_client (server);
         check_dirty_pixels (server);
     }
     else if (retval > 0) {

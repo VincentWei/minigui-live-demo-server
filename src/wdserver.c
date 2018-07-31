@@ -117,6 +117,7 @@ handle_signal_action (int sig_number)
         printf ("SIGINT caught!\n");
         /* if it fails to write, force stop */
         ws_stop (server);
+        _exit (1);
     }
     else if (sig_number == SIGPIPE) {
         printf ("SIGPIPE caught!\n");
@@ -241,20 +242,21 @@ read_option_args (int argc, char **argv)
 int
 main (int argc, char **argv)
 {
-  setup_signals ();
+    setup_signals ();
 
-  if ((server = ws_init ("0.0.0.0", "7788")) == NULL) {
-    perror ("Error during ws_init.\n");
-    exit (EXIT_FAILURE);
-  }
-  /* callbacks */
-  server->onclose = onclose;
-  server->onmessage = onmessage;
-  server->onopen = onopen;
+    if ((server = ws_init ("0.0.0.0", "7788")) == NULL) {
+        perror ("Error during ws_init.\n");
+        exit (EXIT_FAILURE);
+    }
+    /* callbacks */
+    server->onclose = onclose;
+    server->onmessage = onmessage;
+    server->onopen = onopen;
 
-  if (read_option_args (argc, argv) == 0)
-    ws_start (server);
-  ws_stop (server);
+    ws_set_config_unixsocket (USS_PATH);
+    if (read_option_args (argc, argv) == 0)
+        ws_start (server);
+    ws_stop (server);
 
-  return EXIT_SUCCESS;
+    return EXIT_SUCCESS;
 }
