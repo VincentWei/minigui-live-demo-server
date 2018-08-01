@@ -1,5 +1,5 @@
 AUTOMAKE_OPTIONS = foreign
 EXTRA_DIST = README.md LICENSE
 
-SUBDIRS = m4 src producer
-DIST_SUBDIRS = web
+SUBDIRS = m4 src
+DIST_SUBDIRS = web sample

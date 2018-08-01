@@ -2139,14 +2139,16 @@ static void
 handle_ws_accept (int listener, WSServer * server)
 {
   WSClient *client = NULL;
-  int newfd;
+  int newfd, nr_clients;
 
   newfd = accept_client (listener, &server->colist);
   if (newfd == -1)
     return;
 
   client = ws_get_client_from_list (newfd, &server->colist);
-  if (newfd > FD_SETSIZE - 1) {
+  nr_clients = list_count (server->colist);
+
+  if (nr_clients > MAX_WS_CLIENTS || newfd > FD_SETSIZE - 1) {
     LOG (("Too busy: %d %s.\n", newfd, client->remote_ip));
 
     http_error (client, WS_TOO_BUSY_STR);

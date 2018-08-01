@@ -319,7 +319,7 @@ int us_check_dirty_pixels (const USClient* us_client)
     struct timeval now;
 
     if ((us_client->rc_dirty.right - us_client->rc_dirty.left) <= 0
-            && (us_client->rc_dirty.bottom - us_client->rc_dirty.top) <= 0)
+            || (us_client->rc_dirty.bottom - us_client->rc_dirty.top) <= 0)
         return 0;
 
     gettimeofday (&now, NULL);

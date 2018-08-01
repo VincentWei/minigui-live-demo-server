@@ -268,6 +268,8 @@ typedef struct WSClient_
   struct USClient_* us_buddy;  /* UNIX socket */
 } WSClient;
 
+#define MAX_WS_CLIENTS  10
+
 /* Config OOptions */
 typedef struct WSConfig_
 {
