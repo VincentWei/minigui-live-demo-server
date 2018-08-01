@@ -42,7 +42,10 @@ but the MiniGUI app is running in your IoT device actually.
    The server forwards the events to the display client. In this way, 
    a web user can interact with the remote display client.
 
-For more information, please see the example in the directory `sample/`.
+In your webpage, please use `web/webdisplay.js` to connect to the Web Display Server
+and render the pixels in a canvas in your HTML5 page. 
+
+Refer to the directory `sample/` for a complete example.
 
 ## Other information
 
