@@ -1,6 +1,6 @@
 # Web Display Server
 
-Web Display Server is a general WebSocket server which can acts as a broker of 
+Web Display Server is a general WebSocket server which acts as a broker of 
 a local display client and a WebSocket client (webpage).
 
 By using the Web Display Server, you can show a GUI app in your webpage.
@@ -53,7 +53,7 @@ Use thread for every pair of the remote WebSocket client and the local UnixSocke
 
 ## Other information
 
-Note that this Server is based on the work of allinurl at:
+Note that this Server is derived from gwsocket:
 
     https://github.com/allinurl/gwsocket
 
