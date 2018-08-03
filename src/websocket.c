@@ -2755,17 +2755,17 @@ ws_set_config_sslkey (const char *sslkey)
 
 /* Create a new websocket server context. */
 WSServer *
-ws_init (const char *host, const char *port)
+ws_init (void)
 {
   WSServer *server = new_wsserver ();
 
   wsconfig.accesslog = NULL;
-  wsconfig.host = host;
+  wsconfig.host = wsconfig.host;
   wsconfig.max_frm_size = WS_MAX_FRM_SZ;
   wsconfig.origin = NULL;
   wsconfig.sslcert = NULL;
   wsconfig.sslkey = NULL;
-  wsconfig.port = port;
+  wsconfig.port = wsconfig.port;
   wsconfig.use_ssl = 0;
 
   return server;

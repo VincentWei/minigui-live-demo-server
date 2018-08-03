@@ -28,7 +28,7 @@
 #ifndef WD_SERVER_H_INCLUDED
 #define WD_SERVER_H_INCLUDED
 
-#define WD_VERSION "0.8"
+#define WD_VERSION "0.9"
 
 /* The pixel format */
 #define USVFB_PSEUDO_RGB332    1
@@ -79,5 +79,8 @@ struct _remote_event {
     int value1;
     int value2;
 };
+
+int wd_set_null_stdio (void);
+int wd_daemon (void);
 
 #endif // for #ifndef WD_SERVER_H

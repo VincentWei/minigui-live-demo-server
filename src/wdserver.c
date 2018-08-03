@@ -34,6 +34,8 @@
 #include <unistd.h>
 #include <sys/types.h>
 #include <sys/wait.h>
+#include <sys/stat.h>
+#include <fcntl.h>
 
 #if HAVE_CONFIG_H
 #include "config.h"
@@ -49,7 +51,7 @@
 static WSServer *server = NULL;
 
 /* *INDENT-OFF* */
-static char short_options[] = "p:Vh";
+static char short_options[] = "dp:Vh";
 static struct option long_opts[] = {
   {"port"           , required_argument , 0 , 'p' } ,
   {"addr"           , required_argument , 0 ,  0  } ,
@@ -79,6 +81,7 @@ cmd_help (void)
   "wdserver [ options ... ] -p [--addr][--origin][...]\n"
   "The following options can also be supplied to the command:\n\n"
   ""
+  "  -d                       - Run as a daemon.\n"
   "  -p --port=<port>         - Specifies the port to bind.\n"
   "  -h --help                - This help.\n"
   "  -V --version             - Display version information and exit.\n"
@@ -101,12 +104,10 @@ cmd_help (void)
   "For more details visit: http://www.minigui.com\n"
   "wdserver Copyright (C) 2018 by FMSoft\n"
   "\n"
-  "wdserver is based on gwsocket\n"
+  "wdserver is derived from gwsocket\n"
   "gwsocket Copyright (C) 2016 by Gerardo Orellana"
   "\n\n"
   );
-  ws_stop (server);
-  exit (EXIT_FAILURE);
 }
 /* *INDENT-ON* */
 
@@ -201,6 +202,10 @@ wd_launch_client (const char* demo_name)
         if (retval)
             perror ("chdir");
 
+        retval = wd_set_null_stdio ();
+        if (retval)
+            perror ("wd_set_null_stdio");
+        
         strcpy (env_mode, "MG_DEFAULTMODE=");
         strcat (env_mode, _demo_list[found].def_mode);
         char *const argv[] = {_demo_list[found].demo_name, NULL};
@@ -302,55 +307,116 @@ parse_long_opt (const char *name, const char *oarg)
 static int
 read_option_args (int argc, char **argv)
 {
+  int daemon = 0;
   int o, idx = 0;
 
   while ((o = getopt_long (argc, argv, short_options, long_opts, &idx)) >= 0) {
     if (-1 == o || EOF == o)
       break;
     switch (o) {
+    case 'd':
+      daemon = 1;
+      break;
     case 'p':
       ws_set_config_port (optarg);
       break;
     case 'h':
       cmd_help ();
-      return 1;
+      exit (EXIT_SUCCESS);
+      return -1;
     case 'V':
-      fprintf (stdout, "WDSocket %s\n", WD_VERSION);
-      return 1;
+      fprintf (stdout, "WDServer %s\n", WD_VERSION);
+      exit (EXIT_SUCCESS);
+      return -1;
     case 0:
       parse_long_opt (long_opts[idx].name, optarg);
       break;
     case '?':
-      return 1;
+      cmd_help ();
+      exit (EXIT_SUCCESS);
+      return -1;
     default:
-      return 1;
+      return -1;
     }
   }
 
   for (idx = optind; idx < argc; idx++)
     cmd_help ();
 
-  return 0;
+  return daemon;
+}
+
+int wd_set_null_stdio (void)
+{
+    int fd = open ("/dev/null", O_RDWR);
+    if (fd < 0)
+        return -1;
+
+    if (dup2 (fd, 0) < 0 ||
+            dup2 (fd, 1) < 0 ||
+            dup2 (fd, 2) < 0) {
+        close (fd);
+        return -1;
+    }
+
+    close (fd);
+    return 0;
+}
+
+int wd_daemon (void)
+{
+    pid_t pid;
+
+    if (chdir ("/") != 0)
+        return -1;
+
+    if (wd_set_null_stdio ())
+        return -1;
+
+    pid = fork ();
+    if (pid < 0)
+        return -1;
+
+    if (pid > 0)
+        _exit(0);
+
+    if (setsid () < 0)
+        return -1;
+
+    return 0;
 }
 
 int
 main (int argc, char **argv)
 {
-    setup_signals ();
+    int retval;
 
-    if ((server = ws_init ("0.0.0.0", "7788")) == NULL) {
-        perror ("Error during ws_init.\n");
-        exit (EXIT_FAILURE);
-    }
-    /* callbacks */
-    server->onclose = onclose;
-    server->onmessage = onmessage;
-    server->onopen = onopen;
-
+    ws_set_config_host ("0.0.0.0");
+    ws_set_config_port ("7788");
     ws_set_config_unixsocket (USS_PATH);
-    if (read_option_args (argc, argv) == 0)
+
+    retval = read_option_args (argc, argv);
+    if (retval >= 0) {
+        if (retval && wd_daemon ()) {
+            perror ("Error during wd_daemon");
+            exit (EXIT_FAILURE);
+        }
+
+        setup_signals ();
+
+        if ((server = ws_init ()) == NULL) {
+            perror ("Error during ws_init");
+            exit (EXIT_FAILURE);
+        }
+
+        /* callbacks */
+        server->onclose = onclose;
+        server->onmessage = onmessage;
+        server->onopen = onopen;
+
         ws_start (server);
-    ws_stop (server);
+        ws_stop (server);
+    }
 
     return EXIT_SUCCESS;
 }
