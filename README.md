@@ -47,6 +47,10 @@ and render the pixels in a canvas in your HTML5 page.
 
 Refer to the directory `sample/` for a complete example.
 
+## TODO
+
+Use thread for every pair of the remote WebSocket client and the local UnixSocket client.
+
 ## Other information
 
 Note that this Server is based on the work of allinurl at:
