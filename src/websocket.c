@@ -2337,11 +2337,11 @@ set_rfds_wfds (int ws_listener, int us_listener, WSServer * server)
       if (ws_fd > max_file_fd)
         max_file_fd = ws_fd;
 
-        if (us_fd > 0) {
-          FD_SET (us_fd, &fdstate.rfds);
-          if (us_fd > max_file_fd)
-            max_file_fd = us_fd;
-        }
+      if (us_fd > 0) {
+        FD_SET (us_fd, &fdstate.rfds);
+        if (us_fd > max_file_fd)
+          max_file_fd = us_fd;
+      }
     }
 
     /* Only if we have data to send to the WebSocket client */
