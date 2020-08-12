@@ -2287,6 +2287,8 @@ ws_socket (int *listener)
 
   /* Create a TCP socket.  */
   *listener = socket (ai->ai_family, ai->ai_socktype, ai->ai_protocol);
+  if (*listener < 0)
+    FATAL ("Unable to create socket: %s.", strerror (errno));
 
   fcntl (*listener, F_SETFD, FD_CLOEXEC);
 
@@ -2651,7 +2653,9 @@ ws_start (WSServer * server)
 #endif
 
   memset (&fdstate, 0, sizeof fdstate);
-  us_listener = us_listen (wsconfig.unixsocket);
+  if ((us_listener = us_listen (wsconfig.unixsocket)) < 0)
+    FATAL ("Unable to create Unix socket (%s): %s.",  wsconfig.unixsocket, strerror (errno));
+
   ws_socket (&ws_listener);
 
   while (1) {
