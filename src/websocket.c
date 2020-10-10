@@ -495,7 +495,9 @@ ws_ssl_cleanup (WSServer * server)
   CRYPTO_set_id_callback (NULL);
   CRYPTO_set_locking_callback (NULL);
   ERR_free_strings ();
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
   ERR_remove_state (0);
+#endif
   EVP_cleanup ();
 }
 #endif
@@ -625,35 +627,48 @@ out:
 static void
 log_return_message (int ret, int err, const char *fn)
 {
+  unsigned long e;
+
   switch (err) {
   case SSL_ERROR_NONE:
-    LOG (("SSL: %s - SSL_ERROR_NONE\n", fn));
+    LOG (("SSL: %s -> SSL_ERROR_NONE\n", fn));
     LOG (("SSL: TLS/SSL I/O operation completed\n"));
     break;
   case SSL_ERROR_WANT_READ:
-    LOG (("SSL: %s - SSL_ERROR_WANT_READ\n", fn));
+    LOG (("SSL: %s -> SSL_ERROR_WANT_READ\n", fn));
     LOG (("SSL: incomplete, data available for reading\n"));
     break;
   case SSL_ERROR_WANT_WRITE:
-    LOG (("SSL: %s - SSL_ERROR_WANT_WRITE\n", fn));
+    LOG (("SSL: %s -> SSL_ERROR_WANT_WRITE\n", fn));
     LOG (("SSL: incomplete, data available for writing\n"));
     break;
   case SSL_ERROR_ZERO_RETURN:
-    LOG (("SSL: %s - SSL_ERROR_ZERO_RETURN\n", fn));
+    LOG (("SSL: %s -> SSL_ERROR_ZERO_RETURN\n", fn));
     LOG (("SSL: TLS/SSL connection has been closed\n"));
     break;
   case SSL_ERROR_WANT_X509_LOOKUP:
-    LOG (("SSL: %s - SSL_ERROR_WANT_X509_LOOKUP\n", fn));
+    LOG (("SSL: %s -> SSL_ERROR_WANT_X509_LOOKUP\n", fn));
     break;
   case SSL_ERROR_SYSCALL:
-    LOG (("SSL: %s - SSL_ERROR_SYSCALL\n", fn));
-    if (ret >= 0)
-      LOG (("SSL: handshake interrupted, got EOF\n"));
-    else
+    LOG (("SSL: %s -> SSL_ERROR_SYSCALL\n", fn));
+
+    e = ERR_get_error ();
+    if (e > 0)
+      LOG (("SSL: %s -> %s\n", fn, ERR_error_string (e, NULL)));
+
+    /* call was not successful because a fatal error occurred either at the
+     * protocol level or a connection failure occurred. */
+    if (ret != 0) {
       LOG (("SSL bogus handshake interrupt: \n", strerror (errno)));
+      break;
+    }
+    /* call not yet finished. */
+    LOG (("SSL: handshake interrupted, got EOF\n"));
+    if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN)
+      LOG (("SSL: %s -> not yet finished %s\n", fn, strerror (errno)));
     break;
   default:
-    LOG (("SSL: %s - failed fatal error code: %d\n", fn, err));
+    LOG (("SSL: %s -> failed fatal error code: %d\n", fn, err));
     LOG (("SSL: %s\n", ERR_error_string (ERR_get_error (), NULL)));
     break;
   }
@@ -682,10 +697,14 @@ shutdown_ssl (WSClient * client)
     client->sslstatus = WS_TLS_SHUTTING;
     break;
   case SSL_ERROR_SYSCALL:
-    if (ret == 0)
+    if (ret == 0) {
       LOG (("SSL: SSL_shutdown, connection unexpectedly closed by peer.\n"));
-    else
-      LOG (("SSL: SSL_shutdown, probably unrecoverable, forcing close.\n"));
+      /* The shutdown is not yet finished. */
+      if (errno == EINTR || errno == EWOULDBLOCK || errno == EAGAIN)
+        client->sslstatus = WS_TLS_SHUTTING;
+      break;
+    }
+    LOG (("SSL: SSL_shutdown, probably unrecoverable, forcing close.\n"));
   case SSL_ERROR_ZERO_RETURN:
   case SSL_ERROR_WANT_X509_LOOKUP:
   default:
@@ -720,8 +739,14 @@ accept_ssl (WSClient * client)
     client->sslstatus = WS_TLS_ACCEPTING;
     break;
   case SSL_ERROR_SYSCALL:
-    if (ret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK))
+    /* Wait for more activity else bail out, for instance if the socket is closed
+     * during the handshake. */
+    if (ret < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)) {
+      client->sslstatus = WS_TLS_ACCEPTING;
       break;
+    }
+    /* The peer notified that it is shutting down through a SSL "close_notify" so
+     * we shutdown too */
   case SSL_ERROR_ZERO_RETURN:
   case SSL_ERROR_WANT_X509_LOOKUP:
   default:
@@ -799,7 +824,9 @@ send_ssl_buffer (WSClient * client, const char *buffer, int len)
 {
   int bytes = 0, err = 0;
 
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
   ERR_clear_error ();
+#endif
   if ((bytes = SSL_write (client->ssl, buffer, len)) > 0)
     return bytes;
 
@@ -813,8 +840,9 @@ send_ssl_buffer (WSClient * client, const char *buffer, int len)
     client->sslstatus = WS_TLS_WRITING;
     break;
   case SSL_ERROR_SYSCALL:
-    if ((bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)))
+    if ((bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)))
       break;
+    /* The connection was shut down cleanly */
   case SSL_ERROR_ZERO_RETURN:
   case SSL_ERROR_WANT_X509_LOOKUP:
   default:
@@ -834,7 +862,9 @@ read_ssl_socket (WSClient * client, char *buffer, int size)
 {
   int bytes = 0, done = 0, err = 0;
   do {
+#if OPENSSL_VERSION_NUMBER < 0x10100000L
     ERR_clear_error ();
+#endif
 
     done = 0;
     if ((bytes = SSL_read (client->ssl, buffer, size)) > 0)
@@ -852,7 +882,7 @@ read_ssl_socket (WSClient * client, char *buffer, int size)
       done = 1;
       break;
     case SSL_ERROR_SYSCALL:
-      if ((bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)))
+      if ((bytes < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR)))
         break;
     case SSL_ERROR_ZERO_RETURN:
     case SSL_ERROR_WANT_X509_LOOKUP:
@@ -934,8 +964,8 @@ ws_get_method (const char *token)
 {
   const char *lookfor = NULL;
 
-  if ((lookfor = "GET", !memcmp (token, lookfor, 3)) ||
-      (lookfor = "get", !memcmp (token, lookfor, 3)))
+  if ((lookfor = "GET", !memcmp (token, "GET ", 4)) ||
+      (lookfor = "get", !memcmp (token, "get ", 4)))
     return lookfor;
   return NULL;
 }
@@ -1041,7 +1071,7 @@ ws_set_header_fields (char *line, WSHeaders * headers)
   if (line[0] == '\n' || line[0] == '\r')
     return 1;
 
-  if ((strstr (line, "GET")) || (strstr (line, "get"))) {
+  if ((strstr (line, "GET ")) || (strstr (line, "get "))) {
     if ((path = ws_parse_request (line, &method, &proto)) == NULL)
       return 1;
     headers->path = path;
@@ -1501,7 +1531,7 @@ ws_get_handshake (WSClient * client, WSServer * server)
   buf = client->headers->buf;
   readh = client->headers->buflen;
   /* Probably the connection was closed before finishing handshake */
-  if ((bytes = read_socket (client, buf + readh, BUFSIZ - readh)) < 1) {
+  if ((bytes = read_socket (client, buf + readh, WS_MAX_HEAD_SZ - readh)) < 1) {
     if (client->status & WS_CLOSE)
       http_error (client, WS_BAD_REQUEST_STR);
     return bytes;
@@ -1512,7 +1542,7 @@ ws_get_handshake (WSClient * client, WSServer * server)
 
   /* Must have a \r\n\r\n */
   if (strstr (buf, "\r\n\r\n") == NULL) {
-    if (strlen (buf) < BUFSIZ)
+    if (strlen (buf) < WS_MAX_HEAD_SZ)
       return ws_set_status (client, WS_READING, bytes);
 
     http_error (client, WS_BAD_REQUEST_STR);
@@ -1572,15 +1602,16 @@ ws_get_handshake (WSClient * client, WSServer * server)
 int
 ws_send_data (WSClient * client, WSOpcode opcode, const char *p, int sz)
 {
-  if (opcode == WS_OPCODE_BIN) {
-    ws_send_frame (client, opcode, p, sz);
-  }
-  else {
-    char *buf = NULL;
+  char *buf = NULL;
+
+  if (opcode != WS_OPCODE_BIN) {
     buf = sanitize_utf8 (p, sz);
-    ws_send_frame (client, opcode, buf, sz);
-    free (buf);
+  } else {
+    buf = xmalloc (sz);
+    memcpy (buf, p, sz);
   }
+  ws_send_frame (client, opcode, buf, sz);
+  free (buf);
 
   return 0;
 }
@@ -2647,8 +2678,10 @@ ws_start (WSServer * server)
   if (wsconfig.sslcert && wsconfig.sslkey) {
     LOG (("==Using TLS/SSL==\n"));
     wsconfig.use_ssl = 1;
-    if (initialize_ssl_ctx (server))
+    if (initialize_ssl_ctx (server)) {
+      LOG (("Unable to initialize_ssl_ctx\n"));
       return;
+    }
   }
 #endif
 
