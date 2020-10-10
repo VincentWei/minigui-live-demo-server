@@ -2243,6 +2243,7 @@ static int
 handle_ws_writes (int conn, WSServer * server)
 {
   WSClient *client = NULL; 
+
   if (!(client = ws_get_client_from_list (conn, &server->colist)))
     return 1;
 
@@ -2800,8 +2801,8 @@ ws_init (void)
   wsconfig.host = wsconfig.host;
   wsconfig.max_frm_size = WS_MAX_FRM_SZ;
   wsconfig.origin = NULL;
-  wsconfig.sslcert = NULL;
-  wsconfig.sslkey = NULL;
+  wsconfig.sslcert = wsconfig.sslcert;
+  wsconfig.sslkey = wsconfig.sslkey;
   wsconfig.port = wsconfig.port;
   wsconfig.use_ssl = 0;
 
