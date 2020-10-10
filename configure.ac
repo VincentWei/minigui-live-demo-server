@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.60)
-AC_INIT(wdserver,0.8.0)
+AC_INIT(wdserver,0.9.0)
 AC_CONFIG_SRCDIR(src/websocket.c)
 
 dnl ========================================================================
@@ -51,9 +51,9 @@ AC_ARG_ENABLE(develmode,
 devel_mode=$enableval)
 
 openssl="no"
-AC_ARG_WITH(openssl,
-[   --enable-openssl,       build with OpenSSL support <default=no>],
-openssl="$withval")
+AC_ARG_ENABLE(openssl,
+[   --enable-openssl        build with OpenSSL support <default=no>],
+openssl=$enableval)
 
 if test "x$devel_mode" = "xyes"; then
     CPPFLAGS="$CPPFLAGS -DDEBUG -D_DEBUG"
@@ -72,6 +72,8 @@ if test "$openssl" = 'yes'; then
     AC_CHECK_LIB([crypto], [CRYPTO_num_locks],
         DEP_LIBS="$DEP_LIBS -lcrypto",
         [AC_MSG_ERROR([crypto library missing])])
+    AC_DEFINE(HAVE_LIBSSL, 1,
+                [Define if libssl available])
 fi
 
 if test "$ac_cv_prog_gcc" = "yes"; then

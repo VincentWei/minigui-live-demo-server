@@ -2179,7 +2179,7 @@ handle_ws_reads (int conn, WSServer * server)
 
 #ifdef HAVE_LIBSSL
   if (handle_ssl_pending_rw (conn, server, client) == 0)
-    return = 1;
+    return 1;
 #endif
 
   /* *INDENT-OFF* */
