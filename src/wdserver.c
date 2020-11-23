@@ -166,7 +166,7 @@ static struct _demo_info {
     char* const exe_file;
     char* const def_mode;
 } _demo_list [] = {
-    {"mguxdemo", "/usr/local/bin/", "/usr/local/bin/mguxdemo", "360x480-16bpp"},
+    {"mguxdemo", "/srv/devel/build-minigui-5.0/cell-phone-ux-demo", "/srv/devel/build-minigui-5.0/cell-phone-ux-demo/mguxdemo", "360x480-16bpp"},
     {"cbplusui", "/srv/devel/build-minigui-5.0/mg-demos/cbplusui/", "/srv/devel/build-minigui-5.0/mg-demos/cbplusui/cbplusui", "240x240-16bpp"},
 };
 
