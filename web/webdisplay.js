@@ -30,7 +30,7 @@ WebDisplay.prototype.onmessage = function (msg) {
         var bytes = new Uint8Array (msg.data, 16, msg.data.byteLength - 16);
 
         var image = new Image();
-        image.src = 'data:image/png;base64,' + btoa (String.fromCharCode.apply (null, bytes));
+        image.src = String.fromCharCode.apply (null, bytes);
 
         image.onload = function () {
             this.context.drawImage (image, dirtyRect[0], dirtyRect[1], dirtyRect[2] - dirtyRect[0], dirtyRect[3] - dirtyRect[1]);
