@@ -67,10 +67,10 @@ AC_CHECK_LIB([png], [png_sig_cmp], DEP_LIBS="$DEP_LIBS -lpng", [AC_MSG_ERROR([pn
 # Build with OpenSSL
 if test "$openssl" = 'yes'; then
     AC_CHECK_LIB([ssl], [SSL_library_init],
-        DEP_LIBS="$DEP_LIBS -lssl",
+        foo=bar,
         [AC_MSG_WARN([ssl library missing])])
     AC_CHECK_LIB([crypto], [CRYPTO_num_locks],
-        DEP_LIBS="$DEP_LIBS -lcrypto",
+        foo=bar,
         [AC_MSG_WARN([crypto library missing])])
     AC_DEFINE(HAVE_LIBSSL, 1,
                 [Define if libssl available])
