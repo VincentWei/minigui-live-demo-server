@@ -30,6 +30,7 @@
 #include <stdint.h>
 #include <string.h>
 #include <unistd.h>
+#include <dirent.h>
 #include <time.h>
 #include <sys/types.h>
 #include <sys/stat.h>
@@ -343,6 +344,30 @@ void us_reset_dirty_pixels (USClient* us_client)
     gettimeofday (&us_client->last_flush_time, NULL);
 }
 
+static int remove_png_files (USClient* us_client)
+{
+    const char *dir_name = ws_get_config_prefix_path();
+    DIR  *dirp;
+    char file_name[32];
+    char full_path[1024];
+    struct dirent *dp;
+
+    sprintf (file_name, "wds-%08d", us_client->pid);
+
+    dirp = opendir (dir_name);
+    while ((dp = readdir (dirp)) != NULL) {
+        if (strncmp (dp->d_name, file_name, 9) == 0) {
+            strcpy (full_path, dir_name);
+            strcat (full_path, "/");
+            strcat (full_path, dp->d_name);
+            unlink (full_path);
+        }
+    }
+
+    closedir (dirp);
+    return 0;
+}
+
 int us_client_cleanup (USClient* us_client)
 {
     if (us_client->shadow_fb) {
@@ -353,6 +378,8 @@ int us_client_cleanup (USClient* us_client)
     if (us_client->fd >= 0)
         close (us_client->fd);
     us_client->fd = -1;
+
+    remove_png_files (us_client);
 
     return 0;
 }

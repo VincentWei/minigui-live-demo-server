@@ -68,12 +68,13 @@ AC_CHECK_LIB([png], [png_sig_cmp], DEP_LIBS="$DEP_LIBS -lpng", [AC_MSG_ERROR([pn
 if test "$openssl" = 'yes'; then
     AC_CHECK_LIB([ssl], [SSL_library_init],
         DEP_LIBS="$DEP_LIBS -lssl",
-        [AC_MSG_ERROR([ssl library missing])])
+        [AC_MSG_WARN([ssl library missing])])
     AC_CHECK_LIB([crypto], [CRYPTO_num_locks],
         DEP_LIBS="$DEP_LIBS -lcrypto",
-        [AC_MSG_ERROR([crypto library missing])])
+        [AC_MSG_WARN([crypto library missing])])
     AC_DEFINE(HAVE_LIBSSL, 1,
                 [Define if libssl available])
+    DEP_LIBS="$DEP_LIBS -lssl -lcrypto"
 fi
 
 if test "$ac_cv_prog_gcc" = "yes"; then

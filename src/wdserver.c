@@ -58,8 +58,8 @@ static struct option long_opts[] = {
   {"echo-mode"      , no_argument       , 0 ,  0  } ,
   {"max-frame-size" , required_argument , 0 ,  0  } ,
   {"origin"         , required_argument , 0 ,  0  } ,
-  {"pipein"         , required_argument , 0 ,  0  } ,
-  {"pipeout"        , required_argument , 0 ,  0  } ,
+  {"prefix-path"    , required_argument , 0 ,  0  } ,
+  {"prefix-url"     , required_argument , 0 ,  0  } ,
 #if HAVE_LIBSSL
   {"ssl-cert"       , required_argument , 0 ,  0  } ,
   {"ssl-key"        , required_argument , 0 ,  0  } ,
@@ -89,14 +89,11 @@ cmd_help (void)
   "  --addr=<addr>            - Specify an IP address to bind to.\n"
   "  --echo-mode              - Echo all received messages.\n"
   "  --max-frame-size=<bytes> - Maximum size of a websocket frame. This\n"
-  "                             includes received frames from the client\n"
-  "                             and messages through the named pipe.\n"
+  "                             includes received frames from the client.\n"
   "  --origin=<origin>        - Ensure clients send the specified origin\n"
   "                             header upon the WebSocket handshake.\n"
-  "  --pipein=<path/file>     - Creates a named pipe (FIFO) that reads\n"
-  "                             from on the given path/file.\n"
-  "  --pipeout=<path/file>    - Creates a named pipe (FIFO) that writes\n"
-  "                             to on the given path/file.\n"
+  "  --prefix-path=<path>     - The path prefix to save the PNG files of dirty screen.\n"
+  "  --prefix-url=<url>       - The URL prefix to fetch the PNG files for clients.\n"
   "  --ssl-cert=<cert.crt>    - Path to SSL certificate.\n"
   "  --ssl-key=<priv.key>     - Path to SSL private key.\n"
   "\n"
@@ -291,8 +288,6 @@ parse_long_opt (const char *name, const char *oarg)
     ws_set_config_origin (oarg);
   if (!strcmp ("unixsocket", name))
     ws_set_config_unixsocket (oarg);
-  else
-    ws_set_config_unixsocket (USS_PATH);
   if (!strcmp ("access-log", name))
     ws_set_config_accesslog (oarg);
 #if HAVE_LIBSSL
@@ -301,6 +296,10 @@ parse_long_opt (const char *name, const char *oarg)
   if (!strcmp ("ssl-key", name))
     ws_set_config_sslkey (oarg);
 #endif
+  if (!strcmp ("prefix-path", name))
+    ws_set_config_prefix_path (oarg);
+  if (!strcmp ("prefix-url", name))
+    ws_set_config_prefix_url (oarg);
 }
 
 /* Read the user's supplied command line options. */
@@ -394,6 +393,8 @@ main (int argc, char **argv)
     ws_set_config_host ("0.0.0.0");
     ws_set_config_port ("7788");
     ws_set_config_unixsocket (USS_PATH);
+    ws_set_config_prefix_path (DEF_PREFIX_PATH);
+    ws_set_config_prefix_url (DEF_PREFIX_URL);
 
     retval = read_option_args (argc, argv);
     if (retval >= 0) {

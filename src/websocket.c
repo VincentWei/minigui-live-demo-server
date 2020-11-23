@@ -2485,6 +2485,42 @@ handle_us_writes (USClient *us_client, WSClient* ws_client, WSServer* server)
     LOG (("handle_us_writes: do nothing for client #%d.\n", us_client->pid));
 }
 
+#define PNG_VIA_HTTP    1
+
+#if PNG_VIA_HTTP
+static int
+ws_send_dirty_info (WSClient* ws_client, const RECT* rc_dirty, const char* png_url)
+{
+    int len_url = strlen (png_url);
+    int len_buf = sizeof (uint32_t) * 4 + len_url;
+    int retval;
+    char* p = NULL;
+
+    p = xmalloc (len_buf);
+    if (p == NULL) {
+        retval = 3;
+        goto error;
+    }
+
+    char* ptr;
+    ptr = p;
+    ptr += pack_uint32 (ptr, (uint32_t)rc_dirty->left, 0);
+    ptr += pack_uint32 (ptr, (uint32_t)rc_dirty->top, 0);
+    ptr += pack_uint32 (ptr, (uint32_t)rc_dirty->right, 0);
+    ptr += pack_uint32 (ptr, (uint32_t)rc_dirty->bottom, 0);
+    memcpy (ptr, png_url, len_url);
+
+    retval = ws_send_data (ws_client, WS_OPCODE_BIN, p, len_buf);
+
+error:
+    if (p)
+        free (p);
+
+    return retval;
+}
+
+#else
+
 static int
 ws_send_dirty_pixels (WSClient* ws_client, const RECT* rc_dirty, const char* png_path)
 {
@@ -2542,6 +2578,8 @@ error:
     return retval;
 }
 
+#endif /* !PNG_VIA_HTTP */
+
 /* Check and send dirty pixels to WebSocket client */
 static void
 check_dirty_pixels (WSServer* server)
@@ -2555,20 +2593,37 @@ check_dirty_pixels (WSServer* server)
     us_client = ws_client->us_buddy;
     if (us_client && us_check_dirty_pixels (us_client)) {
         int retval;
-        char png_path [20];
+        struct timeval tv;
+        char png_file [128];
+        char png_path [1024];
 
-        //LOG (("check_dirty_pixels: UnixSocket Client #%d has dirty pixels (%d, %d, %d, %d) to send.\n", us_client->pid, us_client->rc_dirty.left, us_client->rc_dirty.top, us_client->rc_dirty.right, us_client->rc_dirty.bottom));
+        gettimeofday (&tv, NULL);
+        sprintf (png_file, "wds-%08d-%d-%d.png", us_client->pid, (int)tv.tv_sec, (int)tv.tv_usec);
 
-        sprintf (png_path, "/tmp/wds-%d.png", us_client->pid);
+        strcpy (png_path, wsconfig.prefix_path);
+        strcat (png_path, "/");
+        strcat (png_path, png_file);
+
         if ((retval = save_dirty_pixels_to_png (png_path, us_client))) {
             printf ("check_dirty_pixels: failed when calling save_dirty_pixels_to_png: %d\n", retval);
             continue;
         }
 
+        strcpy (png_path, wsconfig.prefix_url);
+        strcat (png_path, "/");
+        strcat (png_path, png_file);
+
+#if PNG_VIA_HTTP
+        if ((retval = ws_send_dirty_info (ws_client, &us_client->rc_dirty, png_path))) {
+            printf ("check_dirty_pixels: failed when calling ws_send_dirty_info: %d\n", retval);
+            continue;
+        }
+#else
         if ((retval = ws_send_dirty_pixels (ws_client, &us_client->rc_dirty, png_path))) {
             printf ("check_dirty_pixels: failed when calling ws_send_dirty_pixels: %d\n", retval);
             continue;
         }
+#endif
 
         us_reset_dirty_pixels (us_client);
     }
@@ -2591,7 +2646,7 @@ static void check_buddy_client (WSServer * server)
 
         if (ws_client->status_buddy == WS_BUDDY_LAUNCHED
                 && (time (NULL) - ws_client->launched_time_buddy) > 10) {
-            LOG (("check_rfds_wfds: force to close client #%d because long tiem no connection\n", ws_fd));
+            LOG (("check_rfds_wfds: force to close client #%d because long time no connection\n", ws_fd));
             handle_tcp_close (ws_fd, ws_client, server);
         }
         else if (ws_client->status_buddy == WS_BUDDY_EXITED) {
@@ -2789,6 +2844,27 @@ void
 ws_set_config_sslkey (const char *sslkey)
 {
   wsconfig.sslkey = sslkey;
+}
+
+/* Set path prefix to save the PNG files. */
+void
+ws_set_config_prefix_path (const char *prefix)
+{
+  wsconfig.prefix_path = prefix;
+}
+
+/* Get path prefix to save the PNG files. */
+const char*
+ws_get_config_prefix_path (void)
+{
+  return wsconfig.prefix_path;
+}
+
+/* Set URL prefix to fetch the PNG files. */
+void
+ws_set_config_prefix_url (const char *prefix)
+{
+  wsconfig.prefix_url = prefix;
 }
 
 /* Create a new websocket server context. */

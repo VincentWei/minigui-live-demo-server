@@ -28,7 +28,7 @@
 #ifndef WD_SERVER_H_INCLUDED
 #define WD_SERVER_H_INCLUDED
 
-#define WD_VERSION "0.9"
+#define WD_VERSION "0.9.2"
 
 /* The pixel format */
 #define USVFB_PSEUDO_RGB332    1
@@ -53,6 +53,9 @@ struct _vfb_info {
 #define USC_PATH    "/var/tmp/web-display-client-P%d"
 
 #define USC_PERM    S_IRWXU            /* rwx for user only */
+
+#define DEF_PREFIX_PATH "/tmp"
+#define DEF_PREFIX_URL  "http://localhost/tmp"
 
 #define FT_VFBINFO      10
 #define FT_PING         11
@@ -82,5 +85,6 @@ struct _remote_event {
 
 int wd_set_null_stdio (void);
 int wd_daemon (void);
+const char* ws_get_config_prefix_path (void);
 
 #endif // for #ifndef WD_SERVER_H
