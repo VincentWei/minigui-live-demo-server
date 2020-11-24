@@ -1,6 +1,6 @@
 dnl Process this file with autoconf to produce a configure script.
 AC_PREREQ(2.60)
-AC_INIT(wdserver,0.9.0)
+AC_INIT(wdserver,0.9.2)
 AC_CONFIG_SRCDIR(src/websocket.c)
 
 dnl ========================================================================
