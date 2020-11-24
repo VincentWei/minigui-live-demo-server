@@ -1,5 +1,11 @@
 # Web Display Server
 
+- [Story](#story)
+- [Living Exsamples](#living-exsamples)
+- [Todo](#todo)
+- [Copying](#copying)
+- [Other information](#other-information)
+
 Web Display Server is a general WebSocket server which acts as a broker of 
 a local display client and a WebSocket client (webpage).
 
@@ -32,11 +38,12 @@ but the MiniGUI app is running in your IoT device actually.
       display client via the UnixSocket.
 
 4. The Server encodes the pixels in the accumulated dirty rectangle
-   in PNG format and sends the data to the web client in every 35ms.
-   The data will be a WebSocket binary packet and contain:
+   in PNG format, saves the PNG files to the specific directory, and sends
+   the dirty information to the web client. The information will be a
+   WebSocket binary packet and contain:
 
     * The dirty rectangle of the display.
-    * The pixels of the dirty rectangle encoded in PNG format.
+    * The URL of the PNG files.
 
 5. The web client can send the keyboard and touch events to the Server. 
    The server forwards the events to the display client. In this way, 
@@ -47,9 +54,39 @@ and render the pixels in a canvas in your HTML5 page.
 
 Refer to the directory `sample/` for a complete example.
 
-## TODO
+## Living Exsamples
+
+The live demo for MiniGUI is using this Server. Please visit the following URL
+for more information:
+
+<https://minigui.fmsoft.cn/live-demos>
+
+
+## Todo
 
 Use thread for every pair of the remote WebSocket client and the local UnixSocket client.
+
+## Copying
+
+Copyright (c) 2018 ~ 2020 FMSoft (<https://www.fmsoft.cn>)
+
+Permission is hereby granted, free of charge, to any person obtaining a copy
+of this software and associated documentation files (the "Software"), to deal
+in the Software without restriction, including without limitation the rights
+to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
+copies of the Software, and to permit persons to whom the Software is
+furnished to do so, subject to the following conditions:
+
+The above copyright notice and this permission notice shall be included in all
+copies or substantial portions of the Software.
+
+THE SOFTWARE IS PROVIDED "AS IS", WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
+FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
+AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
+LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
+OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN THE
+SOFTWARE.
 
 ## Other information
 
