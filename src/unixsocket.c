@@ -356,7 +356,7 @@ static int remove_png_files (USClient* us_client)
 
     dirp = opendir (dir_name);
     while ((dp = readdir (dirp)) != NULL) {
-        if (strncmp (dp->d_name, file_name, 9) == 0) {
+        if (strncmp (dp->d_name, file_name, 12) == 0) {
             strcpy (full_path, dir_name);
             strcat (full_path, "/");
             strcat (full_path, dp->d_name);
